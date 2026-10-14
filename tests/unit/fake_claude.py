@@ -121,6 +121,20 @@ def main() -> int:
         result()
         return 0
 
+    if scenario == "structured":
+        init()
+        emit(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "result": '{"answer": 42}',
+                "structured_output": {"answer": 42},
+                "session_id": SESSION,
+            }
+        )
+        return 0
+
     sys.stderr.write(f"unknown scenario {scenario}\n")
     return 99
 

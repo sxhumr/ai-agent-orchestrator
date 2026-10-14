@@ -2,7 +2,11 @@
 
 ForgeFlow is a local-first orchestrator. It takes a project from a business brief to approved requirements, an approved plan, code and independent verification, with Claude Code CLI as the coding runtime. `forgeflow_project_spec.md` has the full specification.
 
-**Status: Milestone 1 (Claude Code adapter).** The only part built so far runs one bounded Claude Code task and records how it ended. Requirements, planning, approvals, persistence and the GUI come in later milestones.
+**Status: Milestones 1 and 2 are done.**
+- **Milestone 1 (Claude Code adapter):** runs one bounded Claude Code task and records how it ended.
+- **Milestone 2 (structured requirements):** turns a business brief into persisted, versioned requirements and open questions, each traceable back to the brief.
+
+Planning, approvals, implementation and the GUI come in later milestones.
 
 ## Setup
 
@@ -14,7 +18,33 @@ uv sync
 
 ## Usage
 
-### CLI
+### Requirements workflow (Milestone 2)
+
+```bash
+uv run forgeflow project create shop --root ~/code/shop --description "Repair bookings"
+uv run forgeflow brief add shop --file brief.md        # each add creates a new brief version
+uv run forgeflow requirements generate shop             # Claude Code analyses the latest brief
+uv run forgeflow questions list shop                    # open questions, ambiguities, assumptions
+uv run forgeflow questions resolve shop Q-003 --answer "Owner and two staff"
+uv run forgeflow req edit shop REQ-002 --status accepted --criterion "..." --note "Q-003"
+uv run forgeflow req show shop REQ-002                  # details, source quote, related questions
+uv run forgeflow req history shop REQ-002               # every version, who changed it and why
+uv run forgeflow req add shop --title "Audit log" --description "..." --criterion "..."
+uv run forgeflow req export shop --out docs/requirements   # requirements.md + requirements.json
+uv run forgeflow project show shop
+```
+
+How generation works:
+- **The analyst runs with no tools** (`--tools ""`) in an empty temporary directory. It can't read or change your files. It only sees the brief, which the prompt marks as data, not instructions.
+- **Output is constrained and then re-validated.** A JSON Schema built from `forgeflow.analysis.schema.AnalysisOutput` is passed through `--json-schema`, and the result is validated again with Pydantic. Duplicate or dangling requirement references are rejected. Invalid output is recorded against the agent run, and nothing is persisted.
+- **ForgeFlow assigns every key**, never the model: `REQ-001`, `Q-001` and `AC-1`. Everything from one analysis is written in a single transaction.
+- **Source quotes are checked deterministically against the brief.** Matching ignores case, whitespace and typographic quotes, and `...` counts as a gap. Requirements whose quote is missing or wasn't found are flagged `?src` in listings and reported after generation.
+- **Versions are never overwritten.** Each requirement edit appends a new version with an optional change note, and each `brief add` creates a new brief version. Every requirement records the brief version and the agent run that produced it.
+- **`generate` refuses if the project already has requirements.** Re-analysing after a brief change is Milestone 6 (change impact).
+
+**Storage:** everything lives in one SQLite database at `$FORGEFLOW_HOME/forgeflow.db`, which defaults to `~/.local/share/forgeflow/forgeflow.db`. Pass `--db PATH` to use a different one. The schema is upgraded automatically through numbered migrations (`PRAGMA user_version`). Use `req export` for human-readable copies.
+
+### Running a single task (Milestone 1)
 
 ```bash
 uv run forgeflow run --cwd /path/to/repo \
@@ -25,7 +55,7 @@ uv run forgeflow run --cwd /path/to/repo \
 
 The command streams event types to stderr and prints a JSON `RunResult` to stdout. It exits with 0 only when the status is `succeeded`. Ctrl-C cancels the run cleanly. Other flags: `--prompt-file`, `--disallowed-tools`, `--model`, `--resume <session-id>`, `--permission-mode`, `--events` (include raw events) and `--quiet`.
 
-### Python
+### Adapter from Python
 
 ```python
 from pathlib import Path
@@ -64,7 +94,8 @@ Status always comes from the exit code and the structured `result` event, never 
 claude -p --output-format stream-json --verbose \
   --permission-mode dontAsk --permission-prompts none \
   --session-id <uuid> | --resume <id> \
-  [--allowedTools ...] [--disallowedTools ...] [--model ...] [--max-budget-usd ...]
+  [--tools ...] [--allowedTools ...] [--disallowedTools ...] [--model ...]
+  [--max-budget-usd ...] [--append-system-prompt ...] [--json-schema ...]
 ```
 
 - The prompt goes in on **stdin**, so it has no argv length limit and doesn't show up in `ps`.
@@ -90,6 +121,7 @@ These were **observed against Claude Code 2.1.299** on 2026-10-14:
 - The prompt is accepted on stdin when no positional prompt is given.
 - A session ID set with `--session-id` is the one the CLI reports.
 - An invalid flag exits 1 with the error on stderr.
+- `--json-schema` puts the validated object in `result.structured_output`, and this works even with `--tools ""`. The schema Pydantic generates, including `$defs`/`$ref`, is accepted.
 - **When a tool is blocked by permissions, the run still reports `success`.** The CLI emits `system/permission_denied` events and fills `permission_denials`, and the model explains the problem in its result text. The adapter records the denials, but **callers must check `permission_denials`** and not rely on `status` alone. The orchestration layer will decide policy for this in Milestone 4.
 
 These are **not yet verified**:
@@ -104,16 +136,18 @@ These are **not yet verified**:
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src
 uv run pytest tests/unit                          # deterministic; uses tests/unit/fake_claude.py
-FORGEFLOW_LIVE=1 uv run pytest tests/integration  # real CLI; two small paid calls (≤ $0.25 each)
+FORGEFLOW_LIVE=1 uv run pytest tests/integration  # real CLI; three small paid calls (≈ $0.30 total)
 ```
 
 ## Limitations
 
-- One task per call, with no persistence. A `RunResult` exists only in memory or in the CLI's JSON output.
+- Adapter runs started with `forgeflow run` aren't persisted. Analyst runs are recorded in `agent_runs`, without their raw events.
+- Project status is set when requirements are generated (`AWAITING_CLARIFICATION` or `REQUIREMENTS_REVIEW`) but doesn't move after that. The enforced state machine and the approval of the requirements baseline arrive in Milestone 3.
+- `req edit --criterion` replaces all acceptance criteria. Repeat the flag for each criterion you want to keep.
 - POSIX only, because it relies on process groups (`os.killpg`).
 - The adapter doesn't inspect or restrict what allowed tools do inside the workspace. That's down to Claude Code's permission system and the `allowed_tools` you pass.
 - The environment is inherited from the parent process. Credentials aren't written to `RunResult`, but they are visible to the CLI.
 
 ## Next steps
 
-Milestone 2 covers structured requirements: Project and Requirement models, ingesting a brief, generating requirements, questions and acceptance criteria through the adapter with `--json-schema`, Pydantic validation, SQLite persistence with migrations, and versioning.
+Milestone 3 covers planning and approval: architecture proposals and decisions, implementation tasks with dependency edges (NetworkX cycle detection and ordering), an explicit approval gate, approval records, workflow events and the enforced workflow state machine.

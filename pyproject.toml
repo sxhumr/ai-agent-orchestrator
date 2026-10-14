@@ -38,4 +38,5 @@ plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 markers = ["live: runs the real Claude Code CLI (opt-in via FORGEFLOW_LIVE=1)"]
