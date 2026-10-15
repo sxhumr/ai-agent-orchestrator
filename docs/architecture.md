@@ -1,6 +1,6 @@
 # Architecture
 
-This document covers the current state as of Milestone 2. `forgeflow_project_spec.md` §4 describes the full target architecture.
+This document covers the current state as of Milestone 2 plus the GUI. `forgeflow_project_spec.md` §4 describes the full target architecture.
 
 ## Modules
 
@@ -12,14 +12,30 @@ forgeflow/
 │   └── requirements.py     Project, Brief, Requirement, OpenItem, AgentRunRecord
 ├── runtime/claude_code.py  RuntimeAdapter protocol + ClaudeCodeAdapter
 ├── store/db.py             SQLite Store, migrations, transactions
+├── api/app.py              FastAPI app for the GUI (thin layer over store and analyst)
 ├── analysis/
 │   ├── schema.py           AnalysisOutput: the structured output the analyst must return
 │   ├── analyst.py          analyse_brief(): run → validate → map → persist
 │   └── export.py           Markdown/JSON export
-└── cli.py                  `forgeflow run | project | brief | requirements | questions`
+└── cli.py                  `forgeflow run | serve | project | brief | requirements | questions`
+
+gui/                        Next.js 16 (App Router, Cache Components) + Tailwind v4
+├── src/app/                routes: /, /projects/[name]/{,brief,requirements,requirements/[key],questions}
+├── src/components/ui/      design-system primitives (no component libraries)
+├── src/components/projects/ feature components (shell, analysis panel, criteria editor…)
+└── src/lib/api/            typed fetch client + TanStack Query hooks
 ```
 
-Dependencies point one way: `cli` → `analysis` → (`runtime`, `store`) → `models`. The orchestration core never imports the GUI, and the GUI doesn't exist yet.
+Dependencies point one way: (`cli`, `api`) → `analysis` → (`runtime`, `store`) → `models`. The core never imports the API or the GUI, and everything the GUI can do is also available from the CLI.
+
+## GUI and API
+
+- **Talking to the API:** the GUI is a client-rendered Next.js app that calls the API directly through CORS. It doesn't go through a Next proxy, which would time out on minute-long analyses.
+- **Server state:** state lives in TanStack Query. Any write invalidates every query for that project.
+- **No in-memory job queue:** `POST /analysis` holds the request open until the run finishes. The API keeps an in-process "running" set only to refuse concurrent runs and to tell other tabs a run is in progress. Those tabs poll `GET /projects/{name}` every 3s while `analysis_running` is true. The persisted agent run record stays the source of truth.
+- **Errors:** `NotFoundError` maps to 404, `ConflictError` to 409, other `StoreError`s to 400, and `AnalysisError` and domain validation errors to 422 (with `run_id` when a run was recorded).
+- **Cache Components:** project routes read `params` through `useParams`, under a `Suspense` boundary in `projects/[name]/layout.tsx`.
+- **No theme flash:** the theme is set by an inline `<head>` script so the first paint is correct. In this Next version a `beforeInteractive` `<Script>` is queued rather than inlined, so it can't be used for this.
 
 ## Adapter boundary
 

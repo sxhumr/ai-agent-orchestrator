@@ -70,6 +70,17 @@ def _build_parser() -> argparse.ArgumentParser:
     run.add_argument("--quiet", action="store_true", help="Do not stream event types to stderr.")
     run.set_defaults(handler=_cmd_run)
 
+    # serve
+    serve = sub.add_parser("serve", help="Start the local API used by the GUI.")
+    serve.add_argument("--host", default="127.0.0.1", help="Loopback address only.")
+    serve.add_argument("--port", type=int, default=8765)
+    serve.add_argument(
+        "--gui-origin",
+        action="append",
+        help="Browser origin allowed to call the API (repeatable; default localhost:3000).",
+    )
+    serve.set_defaults(handler=_cmd_serve)
+
     # project
     project = sub.add_parser("project", help="Create and inspect projects.").add_subparsers(
         dest="action", required=True
@@ -220,6 +231,29 @@ def _install_cancel_handler() -> threading.Event:
     signal.signal(signal.SIGINT, _on_signal)
     signal.signal(signal.SIGTERM, _on_signal)
     return cancel
+
+
+# serve
+
+_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def _cmd_serve(args: argparse.Namespace) -> int:
+    if args.host not in _LOOPBACK:
+        # The API has no authentication and can start paid Claude Code runs.
+        print(
+            "forgeflow: error: serve only listens on 127.0.0.1, localhost or ::1", file=sys.stderr
+        )
+        return 2
+    import uvicorn
+
+    from forgeflow.api.app import create_app
+
+    db = args.db or default_db_path()
+    app = create_app(db, allowed_origins=args.gui_origin)
+    print(f"ForgeFlow API on http://{args.host}:{args.port} (database {db})", file=sys.stderr)
+    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    return 0
 
 
 # project

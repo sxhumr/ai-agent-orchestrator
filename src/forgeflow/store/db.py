@@ -93,6 +93,14 @@ class StoreError(Exception):
     """A request the store cannot satisfy (missing entity, conflict, bad reference)."""
 
 
+class NotFoundError(StoreError):
+    """The referenced entity does not exist."""
+
+
+class ConflictError(StoreError):
+    """The request clashes with existing state (duplicate, already closed)."""
+
+
 def default_db_path() -> Path:
     home = os.environ.get("FORGEFLOW_HOME")
     if home:
@@ -183,7 +191,7 @@ class Store:
                     ),
                 )
         except sqlite3.IntegrityError as exc:
-            raise StoreError(f"project {project.name!r} already exists") from exc
+            raise ConflictError(f"project {project.name!r} already exists") from exc
         return project
 
     def get_project(self, name_or_id: str) -> Project:
@@ -191,7 +199,7 @@ class Store:
             "SELECT data FROM projects WHERE name = ? OR id = ?", (name_or_id, name_or_id)
         ).fetchone()
         if row is None:
-            raise StoreError(f"no project named {name_or_id!r}")
+            raise NotFoundError(f"no project named {name_or_id!r}")
         return Project.model_validate_json(row["data"])
 
     def list_projects(self) -> list[Project]:
@@ -206,7 +214,7 @@ class Store:
                 (project.model_dump_json(), project.updated_at.isoformat(), project.id),
             )
             if cur.rowcount != 1:
-                raise StoreError(f"no project with id {project.id}")
+                raise NotFoundError(f"no project with id {project.id}")
         return project
 
     # Briefs
@@ -237,6 +245,12 @@ class Store:
             )
         return brief
 
+    def list_briefs(self, project_id: str) -> list[Brief]:
+        rows = self.conn.execute(
+            "SELECT data FROM briefs WHERE project_id = ? ORDER BY version", (project_id,)
+        ).fetchall()
+        return [Brief.model_validate_json(r["data"]) for r in rows]
+
     def get_brief(self, project_id: str, version: int | None = None) -> Brief:
         if version is None:
             row = self.conn.execute(
@@ -250,7 +264,7 @@ class Store:
             ).fetchone()
         if row is None:
             which = "brief" if version is None else f"brief v{version}"
-            raise StoreError(f"project has no {which}")
+            raise NotFoundError(f"project has no {which}")
         return Brief.model_validate_json(row["data"])
 
     # Agent runs
@@ -324,7 +338,7 @@ class Store:
                 )
                 self._insert_requirement_version(requirement)
         except sqlite3.IntegrityError as exc:
-            raise StoreError(f"requirement {requirement.key} already exists") from exc
+            raise ConflictError(f"requirement {requirement.key} already exists") from exc
         return requirement
 
     def update_requirement(
@@ -361,7 +375,7 @@ class Store:
         row = self.conn.execute(sql + " ORDER BY v.version DESC LIMIT 1", params).fetchone()
         if row is None:
             suffix = "" if version is None else f" v{version}"
-            raise StoreError(f"no requirement {key}{suffix}")
+            raise NotFoundError(f"no requirement {key}{suffix}")
         return Requirement.model_validate_json(row["data"])
 
     def list_requirements(self, project_id: str) -> list[Requirement]:
@@ -384,7 +398,7 @@ class Store:
             (project_id, key),
         ).fetchall()
         if not rows:
-            raise StoreError(f"no requirement {key}")
+            raise NotFoundError(f"no requirement {key}")
         return [Requirement.model_validate_json(r["data"]) for r in rows]
 
     def _insert_requirement_version(self, requirement: Requirement) -> None:
@@ -432,7 +446,7 @@ class Store:
             "SELECT id, data FROM open_items WHERE project_id = ? AND key = ?", (project_id, key)
         ).fetchone()
         if row is None:
-            raise StoreError(f"no open item {key}")
+            raise NotFoundError(f"no open item {key}")
         return self._load_open_item(row)
 
     def list_open_items(self, project_id: str, *, include_closed: bool = False) -> list[OpenItem]:
@@ -455,7 +469,7 @@ class Store:
         with self.transaction():
             item = self.get_open_item(project_id, key)
             if item.status is not OpenItemStatus.OPEN:
-                raise StoreError(f"{key} is already {item.status.value}")
+                raise ConflictError(f"{key} is already {item.status.value}")
             now = utcnow()
             item = item.model_copy(
                 update={
@@ -504,7 +518,7 @@ class Store:
     def _require_project(self, project_id: str) -> None:
         if self.conn.execute("SELECT 1 FROM projects WHERE id = ?", (project_id,)).fetchone():
             return
-        raise StoreError(f"no project with id {project_id}")
+        raise NotFoundError(f"no project with id {project_id}")
 
     def _max_key_number(self, table: str, project_id: str) -> int:
         assert table in {"requirements", "open_items"}
