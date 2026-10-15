@@ -2,11 +2,12 @@
 
 ForgeFlow is a local-first orchestrator. It takes a project from a business brief to approved requirements, an approved plan, code and independent verification, with Claude Code CLI as the coding runtime. `forgeflow_project_spec.md` has the full specification.
 
-**Status: Milestones 1 and 2 are done.**
+**Status: Milestones 1 and 2 are done, and a GUI covers them.**
 - **Milestone 1 (Claude Code adapter):** runs one bounded Claude Code task and records how it ended.
 - **Milestone 2 (structured requirements):** turns a business brief into persisted, versioned requirements and open questions, each traceable back to the brief.
+- **GUI:** a local web app for everything in Milestone 2.
 
-Planning, approvals, implementation and the GUI come in later milestones.
+Planning, approvals and implementation come in later milestones.
 
 ## Setup
 
@@ -15,6 +16,28 @@ You need Python 3.12+, [uv](https://docs.astral.sh/uv/), and Claude Code CLI on 
 ```bash
 uv sync
 ```
+
+## GUI
+
+Two processes, both local only:
+
+```bash
+uv run forgeflow serve                 # API on http://127.0.0.1:8765
+cd gui && npm install && npm run dev   # GUI on http://localhost:3000
+```
+
+- If port 3000 is taken, run the GUI with `npm run dev -- -p 3100` and allow that origin on the API with `uv run forgeflow serve --gui-origin http://localhost:3100`.
+- The GUI reads `NEXT_PUBLIC_API_URL`, which defaults to `http://127.0.0.1:8765`.
+
+**Screens:** projects, a project overview (next step, stats, agent runs and their cost), brief versions and analysis, requirements (filter, add, then open one to accept, reject or edit it with version history and source quote), and open questions (answer or dismiss).
+
+**API safety.** The API has no login and can start paid Claude Code runs, so:
+- `serve` refuses any host other than loopback.
+- Requests whose `Host` header isn't localhost are rejected, which guards against DNS rebinding.
+- CORS only allows the configured GUI origins.
+- Only one analysis can run per project at a time. A second request gets `409`.
+
+The GUI follows the shared design system in `~/Desktop/UI-DESIGN-GUIDELINES.md`. The tokens are in `gui/src/app/globals.css` and the primitives in `gui/src/components/ui/`. There are no component or icon libraries.
 
 ## Usage
 
@@ -135,6 +158,7 @@ These are **not yet verified**:
 ```bash
 uv run ruff check . && uv run ruff format --check .
 uv run mypy src
+(cd gui && npx tsc --noEmit && npm run lint && npm run build)
 uv run pytest tests/unit                          # deterministic; uses tests/unit/fake_claude.py
 FORGEFLOW_LIVE=1 uv run pytest tests/integration  # real CLI; three small paid calls (≈ $0.30 total)
 ```
