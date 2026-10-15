@@ -108,6 +108,24 @@ def test_prompt_goes_via_stdin_and_argv_has_safety_flags(
     assert result.argv[2:] == argv
 
 
+def test_tools_and_json_schema_flags(tmp_path: Path) -> None:
+    schema = {"type": "object", "properties": {"answer": {"type": "integer"}}}
+    argv = make_adapter().build_argv(task(tmp_path, tools=[], json_schema=schema), "sid")
+    assert argv[argv.index("--tools") + 1] == ""
+    assert json.loads(argv[argv.index("--json-schema") + 1]) == schema
+
+    default = make_adapter().build_argv(task(tmp_path), "sid")
+    assert "--tools" not in default
+    assert "--json-schema" not in default
+
+
+def test_structured_output_is_captured(tmp_path: Path, scenario) -> None:
+    scenario("structured")
+    result = make_adapter().run(task(tmp_path))
+    assert result.status is RunStatus.SUCCEEDED
+    assert result.structured_output == {"answer": 42}
+
+
 def test_resume_uses_resume_flag(tmp_path: Path) -> None:
     argv = make_adapter().build_argv(task(tmp_path, resume_session_id="abc"), "ignored")
     assert argv[argv.index("--resume") + 1] == "abc"

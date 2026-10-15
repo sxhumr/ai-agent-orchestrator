@@ -6,6 +6,7 @@ Integration surface (verified against Claude Code 2.1.299):
   line. The first is ``{"type": "system", "subtype": "init", "session_id": ...}``
   and the last is ``{"type": "result", "subtype": "success" | ..., "is_error": ...,
   "total_cost_usd": ..., "num_turns": ..., "result": ..., "permission_denials": [...]}``.
+  With ``--json-schema`` the validated object is in ``result["structured_output"]``.
 * The prompt is read from stdin when no positional prompt is given, which keeps it
   out of argv (no length limit, not visible in ``ps``).
 * ``--session-id <uuid>`` presets the session id; ``--resume <id>`` continues one.
@@ -107,6 +108,8 @@ class ClaudeCodeAdapter:
             argv += ["--resume", task.resume_session_id]
         else:
             argv += ["--session-id", session_id]
+        if task.tools is not None:
+            argv += ["--tools", ",".join(task.tools)]  # "" disables every built-in tool
         if task.allowed_tools:
             argv += ["--allowedTools", ",".join(task.allowed_tools)]
         if task.disallowed_tools:
@@ -117,6 +120,8 @@ class ClaudeCodeAdapter:
             argv += ["--max-budget-usd", f"{task.max_budget_usd:g}"]
         if task.append_system_prompt:
             argv += ["--append-system-prompt", task.append_system_prompt]
+        if task.json_schema is not None:
+            argv += ["--json-schema", json.dumps(task.json_schema, separators=(",", ":"))]
         return argv
 
     def run(
@@ -325,6 +330,8 @@ class ClaudeCodeAdapter:
         turns = result.get("num_turns")
         if isinstance(turns, int) and not isinstance(turns, bool):
             fields["num_turns"] = turns
+        if "structured_output" in result:
+            fields["structured_output"] = result["structured_output"]
         denials = result.get("permission_denials")
         if isinstance(denials, list):
             fields["permission_denials"] = denials

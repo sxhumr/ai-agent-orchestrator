@@ -21,6 +21,13 @@ class TaskSpec(BaseModel):
         description="Tools pre-approved for this run, e.g. ['Read', 'Edit', 'Bash(pytest *)'].",
     )
     disallowed_tools: list[str] = Field(default_factory=list)
+    tools: list[str] | None = Field(
+        default=None,
+        description="Restrict the built-in tool set; [] disables every tool. None keeps defaults.",
+    )
+    json_schema: dict[str, Any] | None = Field(
+        default=None, description="Require a final structured output matching this JSON Schema."
+    )
     model: str | None = None
     max_budget_usd: float | None = Field(default=None, gt=0)
     append_system_prompt: str | None = None
@@ -74,6 +81,9 @@ class RunResult(BaseModel):
     result_subtype: str | None = None
     result_text: str | None = None
     result_text_truncated: bool = False
+    structured_output: Any | None = Field(
+        default=None, description="Schema-validated output when TaskSpec.json_schema was set."
+    )
     permission_denials: list[Any] = Field(default_factory=list)
     error_details: str | None = None
     stderr_tail: str = ""
