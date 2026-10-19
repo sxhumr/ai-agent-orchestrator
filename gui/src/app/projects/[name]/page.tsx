@@ -5,18 +5,31 @@ import Link from "next/link";
 import { useProjectName } from "@/components/projects/project-shell";
 import {
   Badge,
+  Button,
   Card,
   CardError,
   CardPending,
+  Eyebrow,
   InlinePending,
   PageHeader,
+  PageTitle,
+  primaryLinkClass,
   RelativeTime,
   StatTile,
+  textLinkClass,
 } from "@/components/ui/primitives";
 import { errorMessage } from "@/lib/api/client";
 import { useProject, useRuns } from "@/lib/api/hooks";
 import type { ProjectSummary } from "@/lib/api/types";
-import { formatUsd, plural, RUN_STATUS_LABEL, RUN_STATUS_TONE } from "@/lib/labels";
+import {
+  AGENT_ROLE_LABEL,
+  formatCost,
+  formatUsd,
+  labelFor,
+  plural,
+  RUN_STATUS_LABEL,
+  RUN_STATUS_TONE,
+} from "@/lib/labels";
 
 function nextStep(s: ProjectSummary, base: string): { title: string; body: string; href: string; cta: string } {
   if (s.brief_version === null)
@@ -31,7 +44,7 @@ function nextStep(s: ProjectSummary, base: string): { title: string; body: strin
       title: "Generate requirements",
       body: "Claude Code reads the brief and proposes requirements, acceptance criteria and questions. It takes about a minute.",
       href: `${base}/brief`,
-      cta: "Go to analysis",
+      cta: "Go to the brief",
     };
   if (s.open_item_count > 0)
     return {
@@ -50,10 +63,10 @@ function nextStep(s: ProjectSummary, base: string): { title: string; body: strin
       cta: "Review requirements",
     };
   return {
-    title: "The requirements baseline is ready",
-    body: "Every requirement has a decision. Architecture planning and approval arrive with the next milestone.",
+    title: "Every requirement has a decision",
+    body: "The accepted requirements are the starting point for planning, which arrives with the next milestone.",
     href: `${base}/requirements`,
-    cta: "View requirements",
+    cta: "Review requirements",
   };
 }
 
@@ -66,7 +79,7 @@ function AcceptedProgress({ accepted, total }: { accepted: number; total: number
       <div className="flex items-baseline justify-between gap-3 text-sm">
         <span className="font-medium text-ink">Requirements accepted</span>
         <span className="tabular-nums text-muted">
-          {accepted} / {total} · {pct}%
+          {accepted} of {total} · {pct}%
         </span>
       </div>
       <div className="relative mt-2 h-2 overflow-hidden rounded-full bg-ink/10" aria-hidden>
@@ -84,12 +97,20 @@ function AcceptedProgress({ accepted, total }: { accepted: number; total: number
 function Runs({ name }: { name: string }) {
   const runs = useRuns(name);
   if (runs.isPending) return <InlinePending message="Loading agent runs…" />;
-  if (runs.isError) return <p className="py-4 text-sm text-muted">{errorMessage(runs.error)}</p>;
+  if (runs.isError)
+    return (
+      <div className="flex flex-col items-start gap-3 px-5 py-4 md:px-6">
+        <p className="text-sm text-muted">{errorMessage(runs.error)}</p>
+        <Button variant="secondary" onClick={() => runs.refetch()}>
+          Try again
+        </Button>
+      </div>
+    );
   if (runs.data.length === 0)
-    return <p className="py-4 text-sm text-muted">No agent has run for this project yet.</p>;
+    return <p className="px-5 py-4 text-sm text-muted md:px-6">No agent has run for this project yet.</p>;
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-xl text-left text-sm">
+    <div className="relative overflow-x-auto">
+      <table className="w-full min-w-2xl text-left text-sm">
         <thead>
           <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
             <th className="px-4 py-3 font-semibold">Run</th>
@@ -102,20 +123,33 @@ function Runs({ name }: { name: string }) {
           {[...runs.data].reverse().map((run) => (
             <tr key={run.id} className="border-b border-line/60 last:border-0">
               <td className="px-4 py-3">
-                <p className="font-semibold text-ink">Requirements analyst</p>
-                <p className="max-w-md truncate text-xs text-muted" title={run.summary ?? undefined}>
-                  {run.error_details ?? run.summary ?? run.id}
-                </p>
+                <p className="font-semibold text-ink">{labelFor(AGENT_ROLE_LABEL, run.role)}</p>
+                {run.error_details ? (
+                  <details className="max-w-md text-xs text-muted">
+                    <summary className="cursor-pointer py-1 font-medium text-red-700 dark:text-red-300">
+                      What went wrong
+                    </summary>
+                    <p className="mt-1 whitespace-pre-wrap break-words">{run.error_details}</p>
+                  </details>
+                ) : (
+                  <p className="line-clamp-2 max-w-md text-xs text-muted">{run.summary ?? run.id}</p>
+                )}
               </td>
               <td className="px-4 py-3">
                 <Badge tone={RUN_STATUS_TONE[run.status] ?? RUN_STATUS_TONE.cancelled}>
-                  {RUN_STATUS_LABEL[run.status] ?? run.status}
+                  {labelFor(RUN_STATUS_LABEL, run.status)}
                 </Badge>
               </td>
               <td className="px-4 py-3 whitespace-nowrap text-muted">
                 <RelativeTime iso={run.started_at} />
               </td>
-              <td className="px-4 py-3 text-right tabular-nums text-ink">{formatUsd(run.cost_usd)}</td>
+              <td
+                className={
+                  run.cost_usd === null ? "px-4 py-3 text-right text-muted" : "px-4 py-3 text-right tabular-nums text-ink"
+                }
+              >
+                {formatCost(run.cost_usd)}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -139,27 +173,25 @@ export default function OverviewPage() {
 
   return (
     <>
+      <PageTitle parts={[s.project.name, "Overview"]} />
       <PageHeader
         eyebrow="Overview"
         title={s.project.name}
         description={s.project.description || "No description yet."}
       />
 
-      <div className="rounded-2xl border border-brand/15 bg-brand/[0.04] p-5 dark:bg-brand/10 md:p-6">
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted">Next step</p>
+      <Card className="p-5 md:p-6">
+        <Eyebrow>Next step</Eyebrow>
         <h2 className="mt-1 text-xl font-extrabold text-ink">{step.title}</h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">{step.body}</p>
-        <Link
-          href={step.href}
-          className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-white shadow-sm shadow-brand/25 transition-all hover:bg-brand-deep active:scale-[0.98]"
-        >
+        <Link href={step.href} className={`${primaryLinkClass} mt-5`}>
           {step.cta}
         </Link>
-      </div>
+      </Card>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {/* Accepted is shown once, in the progress card below, rather than as a tile too. */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile label="Requirements" value={s.requirement_count} />
-        <StatTile label="Accepted" value={accepted} />
         <StatTile
           label="Open questions"
           value={s.open_item_count}
@@ -173,12 +205,11 @@ export default function OverviewPage() {
           <AcceptedProgress accepted={accepted} total={s.requirement_count} />
           {s.unverified_source_count > 0 && (
             <p className="text-sm text-muted">
-              {plural(s.unverified_source_count, "requirement")} couldn’t be matched to a quote in the
-              brief. Check those first:{" "}
-              <Link href={`${base}/requirements`} className="font-semibold text-brand hover:underline">
-                review sources
+              {plural(s.unverified_source_count, "requirement")} {s.unverified_source_count === 1 ? "has" : "have"}{" "}
+              an unverified source: the quote wasn’t found in the brief.{" "}
+              <Link href={`${base}/requirements`} className={textLinkClass}>
+                Check them first
               </Link>
-              .
             </p>
           )}
         </Card>
@@ -187,7 +218,9 @@ export default function OverviewPage() {
       <Card className="p-0">
         <div className="px-5 pt-5 md:px-6 md:pt-6">
           <h2 className="text-xl font-extrabold text-ink">Agent runs</h2>
-          <p className="mt-1 text-sm text-muted">Every Claude Code run is recorded, including failed ones and what they cost.</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">
+            Every Claude Code run is recorded, including failed ones and what they cost.
+          </p>
         </div>
         <div className="mt-4 border-t border-line">
           <Runs name={name} />

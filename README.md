@@ -1,177 +1,168 @@
 # ForgeFlow
 
-ForgeFlow is a local-first orchestrator. It takes a project from a business brief to approved requirements, an approved plan, code and independent verification, with Claude Code CLI as the coding runtime. `forgeflow_project_spec.md` has the full specification.
+[![CI](https://github.com/sxhumr/ai-agent-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/sxhumr/ai-agent-orchestrator/actions/workflows/ci.yml)
 
-**Status: Milestones 1 and 2 are done, and a GUI covers them.**
-- **Milestone 1 (Claude Code adapter):** runs one bounded Claude Code task and records how it ended.
-- **Milestone 2 (structured requirements):** turns a business brief into persisted, versioned requirements and open questions, each traceable back to the brief.
-- **GUI:** a local web app for everything in Milestone 2.
+A local-first orchestrator that takes a project from a business brief to approved requirements, then a plan, code and verification, with Claude Code CLI as the coding runtime. Today it covers the first stretch: a brief goes in, and reviewable, versioned requirements come out, each one traced to the sentence it came from.
 
-Planning, approvals and implementation come in later milestones.
+![The requirements list for a demo project, with priorities, statuses and source checks](docs/media/hero.png)
 
-## Setup
+## Features
 
-You need Python 3.12+, [uv](https://docs.astral.sh/uv/), and Claude Code CLI on `PATH` and already authenticated. Development used 2.1.299.
+- **Brief to requirements.** Claude Code reads the business brief and proposes requirements with testable acceptance criteria, plus the open questions, ambiguities and assumptions it found instead of guessing.
+- **Traceable to the brief.** Every requirement carries a quote from the brief, and ForgeFlow checks it against the text itself. A quote it can't find is flagged as an unverified source, so you know which ones to check first.
+- **Nothing is overwritten.** Each edit, accept or reject saves a new version with a note on why it changed. Each brief edit is a new brief version, and requirements keep pointing at the version they came from.
+- **You decide.** Nothing is final until you accept it. Answer the analyst's questions, reword a requirement, or add ones the brief missed.
+- **Safe by default.**
+  - The analyst runs with no tools in an empty folder, so it can't read or change your files.
+  - Its output must match a schema and is validated again before anything is saved.
+  - The API only listens on this machine, rejects DNS-rebinding requests, and runs one analysis per project at a time.
+- **Bounded runs.** Every Claude Code run has a budget, a time limit and clean cancellation, and is recorded with its cost, including failed ones.
+- **Local and private.** Everything lives in one SQLite file on your machine. There is no account and no hosted service.
+- **GUI and CLI.** Everything the GUI does is also a `forgeflow` command.
+
+![Accepting a requirement, answering a question and filtering the list](docs/media/demo.gif)
+
+| Project overview | Open questions |
+| --- | --- |
+| ![Overview with the next step, stats and accepted progress](docs/media/overview.png) | ![Questions sorted by impact, each linked to the requirements it affects](docs/media/questions.png) |
+| **Requirement detail** | **Dark mode** |
+| ![A requirement with its edit form, source quote and history](docs/media/requirement.png) | ![A requirement whose source quote wasn't found in the brief, in dark mode](docs/media/dark.png) |
+
+The screenshots use demo data from [`scripts/seed_demo.py`](scripts/seed_demo.py).
+
+## Status
+
+| Milestone | What it delivers | State |
+| --- | --- | --- |
+| 1. Claude Code adapter | Run one bounded Claude Code task and record how it ended | Done |
+| 2. Structured requirements | Brief to persisted, versioned, traceable requirements and questions | Done |
+| GUI | A local web app for everything in Milestone 2 | Done |
+| 3. Plan and approval | Architecture proposal, task graph, explicit approval gate | Next |
+| 4. Implementation and verification | One approved task at a time, tests and checks, bounded repair loop | Planned |
+| 5. Full GUI workflow | Plan approval, execution and verification views | Planned |
+| 6. Change impact | Re-analyse a changed brief and replan only what it affects | Planned |
+| Later | Parallel agents in isolated Git worktrees | Planned |
+
+[`forgeflow_project_spec.md`](forgeflow_project_spec.md) has the full specification.
+
+## Install
+
+You need Python 3.12 or later, [uv](https://docs.astral.sh/uv/), Node.js 24, and Claude Code CLI on `PATH` and already signed in. Development used Claude Code 2.1.299.
 
 ```bash
 uv sync
+(cd gui && npm ci)
 ```
 
-## GUI
+## Using it
 
-Two processes, both local only:
+### GUI
+
+Start the API and the GUI, then open http://localhost:3000:
 
 ```bash
-uv run forgeflow serve                 # API on http://127.0.0.1:8765
-cd gui && npm install && npm run dev   # GUI on http://localhost:3000
+uv run forgeflow serve        # API on http://127.0.0.1:8765
+(cd gui && npm run dev)       # GUI on http://localhost:3000
 ```
 
-- If port 3000 is taken, run the GUI with `npm run dev -- -p 3100` and allow that origin on the API with `uv run forgeflow serve --gui-origin http://localhost:3100`.
-- The GUI reads `NEXT_PUBLIC_API_URL`, which defaults to `http://127.0.0.1:8765`.
+Create a project, paste the brief, and generate requirements. Analysis takes about a minute and a typical brief costs $0.10 to $0.30. Then answer the questions and accept, reword or reject each requirement.
 
-**Screens:** projects, a project overview (next step, stats, agent runs and their cost), brief versions and analysis, requirements (filter, add, then open one to accept, reject or edit it with version history and source quote), and open questions (answer or dismiss).
+To look around without a paid run, seed the demo project first: `uv run python scripts/seed_demo.py`.
 
-**API safety.** The API has no login and can start paid Claude Code runs, so:
-- `serve` refuses any host other than loopback.
-- Requests whose `Host` header isn't localhost are rejected, which guards against DNS rebinding.
-- CORS only allows the configured GUI origins.
-- Only one analysis can run per project at a time. A second request gets `409`.
+If port 3000 is taken, run the GUI with `npm run dev -- -p 3100` and allow that origin with `uv run forgeflow serve --gui-origin http://localhost:3100`. The GUI finds the API through `NEXT_PUBLIC_API_URL`, which defaults to `http://127.0.0.1:8765`.
 
-The GUI follows the shared design system in `~/Desktop/UI-DESIGN-GUIDELINES.md`. The tokens are in `gui/src/app/globals.css` and the primitives in `gui/src/components/ui/`. There are no component or icon libraries.
-
-## Usage
-
-### Requirements workflow (Milestone 2)
+### CLI
 
 ```bash
 uv run forgeflow project create shop --root ~/code/shop --description "Repair bookings"
-uv run forgeflow brief add shop --file brief.md        # each add creates a new brief version
-uv run forgeflow requirements generate shop             # Claude Code analyses the latest brief
-uv run forgeflow questions list shop                    # open questions, ambiguities, assumptions
+uv run forgeflow brief add shop --file brief.md       # each add is a new brief version
+uv run forgeflow requirements generate shop            # Claude Code analyses the latest brief
 uv run forgeflow questions resolve shop Q-003 --answer "Owner and two staff"
-uv run forgeflow req edit shop REQ-002 --status accepted --criterion "..." --note "Q-003"
-uv run forgeflow req show shop REQ-002                  # details, source quote, related questions
-uv run forgeflow req history shop REQ-002               # every version, who changed it and why
-uv run forgeflow req add shop --title "Audit log" --description "..." --criterion "..."
+uv run forgeflow req edit shop REQ-002 --status accepted --note "Q-003 answered"
 uv run forgeflow req export shop --out docs/requirements   # requirements.md + requirements.json
-uv run forgeflow project show shop
 ```
 
-How generation works:
-- **The analyst runs with no tools** (`--tools ""`) in an empty temporary directory. It can't read or change your files. It only sees the brief, which the prompt marks as data, not instructions.
-- **Output is constrained and then re-validated.** A JSON Schema built from `forgeflow.analysis.schema.AnalysisOutput` is passed through `--json-schema`, and the result is validated again with Pydantic. Duplicate or dangling requirement references are rejected. Invalid output is recorded against the agent run, and nothing is persisted.
-- **ForgeFlow assigns every key**, never the model: `REQ-001`, `Q-001` and `AC-1`. Everything from one analysis is written in a single transaction.
-- **Source quotes are checked deterministically against the brief.** Matching ignores case, whitespace and typographic quotes, and `...` counts as a gap. Requirements whose quote is missing or wasn't found are flagged `?src` in listings and reported after generation.
-- **Versions are never overwritten.** Each requirement edit appends a new version with an optional change note, and each `brief add` creates a new brief version. Every requirement records the brief version and the agent run that produced it.
-- **`generate` refuses if the project already has requirements.** Re-analysing after a brief change is Milestone 6 (change impact).
+| Command | What it does |
+| --- | --- |
+| `project create / list / show` | Create a project for a folder, list projects, show one with its counts and runs |
+| `brief add / show` | Add a new brief version from a file or stdin, show any version |
+| `requirements generate` | Analyse the latest brief (refuses once a project has requirements) |
+| `req list / show / history` | List requirements (`?src` marks an unverified source), show one with its quote and questions, list every version |
+| `req add / edit` | Add your own requirement, or save a new version with a change note |
+| `req export` | Write Markdown and JSON copies |
+| `questions list / resolve` | List open questions, answer or dismiss one |
+| `run` | Run one bounded Claude Code task and print a JSON result ([details](docs/runtime-adapter.md)) |
+| `serve` | Start the local API for the GUI |
 
-**Storage:** everything lives in one SQLite database at `$FORGEFLOW_HOME/forgeflow.db`, which defaults to `~/.local/share/forgeflow/forgeflow.db`. Pass `--db PATH` to use a different one. The schema is upgraded automatically through numbered migrations (`PRAGMA user_version`). Use `req export` for human-readable copies.
+Data lives in one SQLite file at `$FORGEFLOW_HOME/forgeflow.db`, which defaults to `~/.local/share/forgeflow/forgeflow.db`. Pass `--db PATH` to use another. The schema upgrades itself through numbered migrations.
 
-### Running a single task (Milestone 1)
-
-```bash
-uv run forgeflow run --cwd /path/to/repo \
-  --prompt "Add a hello() function to app.py" \
-  --allowed-tools Read,Edit \
-  --max-budget-usd 0.50 --timeout 300
-```
-
-The command streams event types to stderr and prints a JSON `RunResult` to stdout. It exits with 0 only when the status is `succeeded`. Ctrl-C cancels the run cleanly. Other flags: `--prompt-file`, `--disallowed-tools`, `--model`, `--resume <session-id>`, `--permission-mode`, `--events` (include raw events) and `--quiet`.
-
-### Adapter from Python
-
-```python
-from pathlib import Path
-from forgeflow.config import AdapterConfig
-from forgeflow.models import TaskSpec, RunStatus
-from forgeflow.runtime import ClaudeCodeAdapter
-
-adapter = ClaudeCodeAdapter(AdapterConfig(timeout_s=300))
-result = adapter.run(
-    TaskSpec(prompt="...", workspace=Path("repo"), allowed_tools=["Read", "Edit"]),
-    cancel=None,  # optional threading.Event; set it to stop the run
-    on_event=print,  # optional live callback, called with each RunEvent
-)
-if result.status is RunStatus.SUCCEEDED and not result.permission_denials:
-    ...
-```
-
-## Adapter interface
-
-`RuntimeAdapter.run(task, *, cancel, on_event) -> RunResult` lives in `src/forgeflow/runtime/claude_code.py`. Everything specific to the CLI stays inside `ClaudeCodeAdapter`.
-
-| `RunStatus` | Meaning |
-|---|---|
-| `succeeded` | Exit code 0, a `result` event arrived with `subtype == "success"`, and `is_error` is false |
-| `failed` | The exit code was non-zero, or the result event reported an error such as `error_max_budget_usd` |
-| `timed_out` | The wall-clock limit was hit and the process group was stopped |
-| `cancelled` | The `cancel` event was set and the process group was stopped |
-| `launch_error` | The binary is missing or not executable, or the workspace isn't a directory |
-| `protocol_error` | The process exited 0 but never emitted a `result` event |
-
-Status always comes from the exit code and the structured `result` event, never from output text. `RunResult` also records the session ID, argv (the prompt is not included), timings, cost, turns, final result text, permission denials, the stderr tail and the stored events.
-
-### How a run is invoked
+## How it works
 
 ```
-claude -p --output-format stream-json --verbose \
-  --permission-mode dontAsk --permission-prompts none \
-  --session-id <uuid> | --resume <id> \
-  [--tools ...] [--allowedTools ...] [--disallowedTools ...] [--model ...]
-  [--max-budget-usd ...] [--append-system-prompt ...] [--json-schema ...]
+┌─ gui/ (Next.js) ─────────┐   HTTP, loopback only   ┌─ forgeflow (Python) ───────────────────┐
+│ projects, brief,         │ ──────────────────────► │ api/      FastAPI, thin layer          │
+│ requirements, questions  │                         │ cli.py    the same operations          │
+│ TanStack Query           │ ◄────────────────────── │    │                                   │
+└──────────────────────────┘                         │    ▼                                   │
+                                                     │ analysis/ prompt, schema, quote checks │
+                                                     │    │                    │              │
+                                                     │    ▼                    ▼              │
+                                                     │ runtime/  adapter    store/  SQLite    │
+                                                     └────┼───────────────────────────────────┘
+                                                          ▼
+                                       claude -p --output-format stream-json --tools ""
 ```
 
-- The prompt goes in on **stdin**, so it has no argv length limit and doesn't show up in `ps`.
-- `dontAsk` together with `--permission-prompts none` gives least privilege. Only the tools in `allowed_tools` can run, and anything else is denied automatically, so the run never blocks waiting for a human.
-- The process starts in its own **process group**. Timeout and cancel send SIGTERM to the group, wait `kill_grace_s`, then send SIGKILL, so descendants are stopped too. If a leftover background process keeps the output pipes open after the CLI exits, the group gets SIGKILL.
+- **The adapter** owns everything specific to Claude Code. It runs `claude -p` headless in its own process group, sends the prompt on stdin, and reads the stream-json events. It decides the outcome from the exit code and the final result event, never from output text. Budget, timeout and cancellation stop the whole process group. [Reference](docs/runtime-adapter.md).
+- **The analyst** builds the prompt with the brief marked as data, not instructions, and passes a JSON Schema generated from its Pydantic model. It validates the result again, assigns every key itself (`REQ-001`, `Q-001`, `AC-1`), checks each quote against the brief, and writes everything from one analysis in a single transaction.
+- **The store** is one SQLite database with append-only versions for briefs and requirements, and a record of every agent run. Dependencies point one way: (CLI, API) → analysis → (runtime, store) → models.
 
-### Bounds (`AdapterConfig`)
+The reasons behind each decision are in [`docs/decisions/`](docs/decisions/) (ADR 0001 to 0003).
 
-| Setting | Default | What it limits |
-|---|---|---|
-| `timeout_s` | 600 | Wall-clock time per run. `TaskSpec.timeout_s` overrides it for one task. |
-| `kill_grace_s` | 5 | Delay between SIGTERM and SIGKILL |
-| `max_events` | 1000 | Events stored per run. Extra events are counted in `events_dropped`, and the final result is still read. |
-| `max_line_bytes` | 8 MiB | Longest stdout line that gets parsed. Longer lines are discarded and recorded as a parse error. |
-| `max_stored_event_bytes` | 64 KiB | Events larger than this are stored without their payload |
-| `max_stderr_bytes` | 64 KiB | Tail of stderr that's kept |
-| `max_result_chars` | 20 000 | Final result text that's kept |
+## Quality
 
-## Verified behaviour vs assumptions
-
-These were **observed against Claude Code 2.1.299** on 2026-10-14:
-- stream-json emits `system/init`, then `assistant`, `user`, `rate_limit_event` and `system/*` events, and finally a `result` event with `subtype`, `is_error`, `total_cost_usd`, `num_turns`, `result`, `session_id` and `permission_denials`.
-- The prompt is accepted on stdin when no positional prompt is given.
-- A session ID set with `--session-id` is the one the CLI reports.
-- An invalid flag exits 1 with the error on stderr.
-- `--json-schema` puts the validated object in `result.structured_output`, and this works even with `--tools ""`. The schema Pydantic generates, including `$defs`/`$ref`, is accepted.
-- **When a tool is blocked by permissions, the run still reports `success`.** The CLI emits `system/permission_denied` events and fills `permission_denials`, and the model explains the problem in its result text. The adapter records the denials, but **callers must check `permission_denials`** and not rely on `status` alone. The orchestration layer will decide policy for this in Milestone 4.
-
-These are **not yet verified**:
-- `--resume` with stdin input in a real multi-turn workflow. The flag is passed correctly, but no live test covers it yet.
-- What exit code and result subtype the CLI uses when `--max-budget-usd` is exceeded. It's handled generically as `failed` through `is_error` or a non-success subtype.
-- Whether SIGTERM lets the CLI flush its session transcript before exiting.
-- Whether the event schema stays stable across CLI versions. The adapter reads only `type`, `subtype`, `session_id` and the result fields listed above, and ignores everything else.
-
-## Development
-
-```bash
-uv run ruff check . && uv run ruff format --check .
-uv run mypy src
-(cd gui && npx tsc --noEmit && npm run lint && npm run build)
-uv run pytest tests/unit                          # deterministic; uses tests/unit/fake_claude.py
-FORGEFLOW_LIVE=1 uv run pytest tests/integration  # real CLI; three small paid calls (≈ $0.30 total)
-```
+- **75 unit tests** run on every change in CI. They cover the adapter (through a scripted fake `claude` binary), the analyst, the store and its migrations, the API and the CLI.
+- **Live tests** call the real Claude Code CLI to check the adapter and the analyst end to end. They make three small paid calls (about $0.30 in total), so they only run with `FORGEFLOW_LIVE=1`.
+- **Strict typing and linting:** `mypy --strict` and Ruff for Python, TypeScript strict mode and ESLint for the GUI.
+- **Accessible GUI:**
+  - Labelled fields with linked hints and errors.
+  - Text contrast of at least 4.5:1 in light and dark modes, and 3:1 for field borders.
+  - 44 px buttons and fields, visible focus rings and a skip link.
+  - Status changes announced to screen readers, and reduced motion respected.
+  - Nothing is thrown away without asking: discarding a draft or dismissing a question asks first.
+- **Verified against the real CLI.** What has and hasn't been checked against Claude Code 2.1.299 is listed in [`docs/runtime-adapter.md`](docs/runtime-adapter.md#verified-behaviour-vs-assumptions).
 
 ## Limitations
 
-- Adapter runs started with `forgeflow run` aren't persisted. Analyst runs are recorded in `agent_runs`, without their raw events.
-- Project status is set when requirements are generated (`AWAITING_CLARIFICATION` or `REQUIREMENTS_REVIEW`) but doesn't move after that. The enforced state machine and the approval of the requirements baseline arrive in Milestone 3.
-- `req edit --criterion` replaces all acceptance criteria. Repeat the flag for each criterion you want to keep.
-- POSIX only, because it relies on process groups (`os.killpg`).
-- The adapter doesn't inspect or restrict what allowed tools do inside the workspace. That's down to Claude Code's permission system and the `allowed_tools` you pass.
-- The environment is inherited from the parent process. Credentials aren't written to `RunResult`, but they are visible to the CLI.
+- **Platform:** POSIX only, because cancellation relies on process groups.
+- **Workflow:** the project status moves when requirements are generated but not after. The enforced state machine and the approval of the requirements baseline arrive in Milestone 3.
+- **Re-analysis:** `requirements generate` refuses once a project has requirements. Re-analysing a changed brief without losing your edits is Milestone 6.
+- **Adapter:**
+  - Runs started with `forgeflow run` aren't persisted. Analyst runs are recorded, but without their raw events.
+  - The adapter doesn't restrict what allowed tools do inside the workspace. That is left to Claude Code's permission system.
+  - The environment, including credentials, is passed through to the CLI.
+- **CLI:** `req edit --criterion` replaces all acceptance criteria, so repeat the flag for each one you want to keep.
 
-## Next steps
+## Development
 
-Milestone 3 covers planning and approval: architecture proposals and decisions, implementation tasks with dependency edges (NetworkX cycle detection and ordering), an explicit approval gate, approval records, workflow events and the enforced workflow state machine.
+| Check | Command |
+| --- | --- |
+| Python lint and formatting | `uv run ruff check . && uv run ruff format --check .` |
+| Python types | `uv run mypy src` |
+| Unit tests | `uv run pytest tests/unit` |
+| Live tests (paid, about $0.30) | `FORGEFLOW_LIVE=1 uv run pytest tests/integration` |
+| GUI types, lint, build | `cd gui && npx tsc --noEmit && npm run lint && npm run build` |
+| Screenshots and demo GIF | `scripts/capture-media.sh` (needs `npx playwright install chromium` in `gui/`) |
+
+## Documentation
+
+| Document | Contents |
+| --- | --- |
+| [`forgeflow_project_spec.md`](forgeflow_project_spec.md) | The full specification and milestones |
+| [`docs/architecture.md`](docs/architecture.md) | Modules, GUI and API design, the adapter boundary |
+| [`docs/runtime-adapter.md`](docs/runtime-adapter.md) | `forgeflow run`, the adapter API, invocation, limits, verified CLI behaviour |
+| [`docs/decisions/`](docs/decisions/) | Decision records: headless stream-json, the SQLite store, structured analyst output |
+
+## Licence
+
+Apache License 2.0; see [LICENSE](LICENSE). Copyright 2026 Sohum Ramouthar.

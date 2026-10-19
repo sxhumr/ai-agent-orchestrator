@@ -13,7 +13,14 @@ export class ApiError extends Error {
 }
 
 const OFFLINE_MESSAGE =
-  "We couldn't reach the ForgeFlow API. Start it with `uv run forgeflow serve` and try again.";
+  "We couldn’t reach the ForgeFlow API. Start it with “uv run forgeflow serve” and try again.";
+
+function fallbackMessage(status: number): string {
+  if (status === 404) return "We couldn’t find that. It may have been removed or renamed.";
+  if (status === 409) return "Something else is already changing this. Wait a moment and try again.";
+  if (status >= 500) return "The ForgeFlow API ran into a problem. Check its terminal for details, then try again.";
+  return "The ForgeFlow API didn’t accept that request. Check the details and try again.";
+}
 
 function detailToMessage(detail: unknown): string | null {
   if (typeof detail === "string") return detail;
@@ -22,7 +29,11 @@ function detailToMessage(detail: unknown): string | null {
     return detail
       .map((d) => (d && typeof d === "object" && "msg" in d ? String(d.msg) : null))
       .filter(Boolean)
-      .join("; ");
+      .map((msg) => {
+        const text = String(msg);
+        return text.charAt(0).toUpperCase() + text.slice(1).replace(/\.?$/, ".");
+      })
+      .join(" ");
   }
   return null;
 }
@@ -38,7 +49,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(OFFLINE_MESSAGE, 0);
   }
   if (!response.ok) {
-    let message = `The API answered with status ${response.status}.`;
+    let message = fallbackMessage(response.status);
     let runId: string | undefined;
     try {
       const body = await response.json();

@@ -13,6 +13,7 @@ import {
   Chip,
   cx,
   InlinePending,
+  secondaryLinkClass,
 } from "@/components/ui/primitives";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useProject } from "@/lib/api/hooks";
@@ -66,7 +67,7 @@ function steps(base: string, s: ProjectSummary): Step[] {
 }
 
 const CIRCLE: Record<StepState, string> = {
-  done: "bg-brand text-white",
+  done: "bg-brand-fill text-white",
   attention: "bg-brand-orange text-white",
   active: "bg-brand/10 text-brand",
   idle: "bg-ink/5 text-muted",
@@ -147,17 +148,14 @@ export function ProjectShell({ children }: { children: React.ReactNode }) {
   if (project.isError) {
     const missing = project.error instanceof ApiError && project.error.status === 404;
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 md:p-8">
+      <main id="main" className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 md:p-8">
         {missing ? (
           <Card>
             <h1 className="text-2xl font-extrabold text-ink">We can’t find “{name}”</h1>
             <p className="mt-1 text-sm text-muted">
               It may have been created against a different database. Pick a project from the list.
             </p>
-            <Link
-              href="/"
-              className="mt-6 inline-flex min-h-11 items-center gap-2 rounded-xl border border-line bg-surface px-5 text-sm font-semibold text-ink transition-colors hover:border-brand/40 hover:text-brand"
-            >
+            <Link href="/" className={cx(secondaryLinkClass, "mt-6 gap-2")}>
               <ArrowLeftIcon /> All projects
             </Link>
           </Card>
@@ -169,15 +167,18 @@ export function ProjectShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 md:flex-row md:p-8">
-      <aside className="w-full shrink-0 md:w-72">
-        <div className="rounded-2xl border border-line bg-surface p-3 shadow-sm shadow-ink/[0.03] md:sticky md:top-20">
+    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 p-4 md:p-8 lg:flex-row">
+      <aside className="w-full shrink-0 lg:w-72">
+        <div className="rounded-2xl border border-line bg-surface p-3 shadow-sm shadow-ink/[0.03] lg:sticky lg:top-20">
           <div className="flex items-start justify-between gap-2 px-2.5 pt-1.5 pb-3">
             <div className="min-w-0">
-              <Link href="/" className="inline-flex items-center gap-1 text-xs font-medium text-muted hover:text-ink">
+              <Link
+                href="/"
+                className="-mx-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-xs font-medium text-muted hover:text-ink"
+              >
                 <ArrowLeftIcon className="h-3.5 w-3.5" /> All projects
               </Link>
-              <p className="mt-1 truncate font-display text-lg font-extrabold text-ink" title={name}>
+              <p className="truncate font-display text-lg font-extrabold text-ink" title={name}>
                 {name}
               </p>
               {project.data && (
@@ -190,7 +191,7 @@ export function ProjectShell({ children }: { children: React.ReactNode }) {
             </div>
             <Button
               variant="secondary"
-              className="px-3 py-1.5 text-xs md:hidden"
+              className="px-3 py-1.5 text-xs lg:hidden"
               aria-expanded={navOpen}
               aria-controls="project-nav"
               onClick={() => setNavOpen((open) => !open)}
@@ -198,7 +199,7 @@ export function ProjectShell({ children }: { children: React.ReactNode }) {
               {navOpen ? "Hide sections" : "Sections"}
             </Button>
           </div>
-          <div id="project-nav" className={cx("border-t border-line pt-3", !navOpen && "hidden md:block")}>
+          <div id="project-nav" className={cx("border-t border-line pt-3", !navOpen && "hidden lg:block")}>
             {project.data ? (
               <ProjectNav summary={project.data} base={base} />
             ) : (
@@ -207,7 +208,9 @@ export function ProjectShell({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 space-y-6">{children}</main>
+      <main id="main" className="min-w-0 flex-1 space-y-6">
+        {children}
+      </main>
     </div>
   );
 }

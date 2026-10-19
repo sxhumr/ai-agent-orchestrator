@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -17,13 +17,15 @@ import {
   Field,
   Input,
   PageHeader,
+  PageTitle,
   RelativeTime,
   Textarea,
 } from "@/components/ui/primitives";
+import { TickIcon } from "@/components/ui/icons";
 import { errorMessage } from "@/lib/api/client";
 import { useAddBrief, useBriefs, useProject } from "@/lib/api/hooks";
 import type { Brief } from "@/lib/api/types";
-import { scrollToFirstProblem } from "@/lib/forms";
+import { confirmDiscard, scrollToFirstProblem } from "@/lib/forms";
 
 const schema = z.object({
   content: z
@@ -35,30 +37,50 @@ const schema = z.object({
 
 type Values = z.infer<typeof schema>;
 
-function BriefForm({ name, previous, onDone }: { name: string; previous?: string; onDone?: () => void }) {
+function BriefForm({
+  name,
+  previous,
+  onDone,
+  onCancel,
+}: {
+  name: string;
+  previous?: string;
+  onDone?: (version: number) => void;
+  onCancel?: () => void;
+}) {
   const add = useAddBrief(name);
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors },
+    setFocus,
+    formState: { errors, isDirty },
   } = useForm<Values>({
     resolver: zodResolver(schema),
     mode: "onBlur",
     defaultValues: { content: previous ?? "", source_name: "" },
   });
 
+  useEffect(() => {
+    if (onCancel) setFocus("content");
+  }, [onCancel, setFocus]);
+
+  const cancel = () => {
+    if (onCancel && confirmDiscard(isDirty, "this draft")) onCancel();
+  };
+
   return (
     <form
       noValidate
+      onKeyDown={(e) => e.key === "Escape" && onCancel && cancel()}
       onSubmit={handleSubmit(
         (values) =>
           add.mutate(
             { content: values.content, source_name: values.source_name || null },
             {
-              onSuccess: () => {
+              onSuccess: (brief) => {
                 reset({ content: "", source_name: "" });
-                onDone?.();
+                onDone?.(brief.version);
               },
             },
           ),
@@ -84,8 +106,8 @@ function BriefForm({ name, previous, onDone }: { name: string; previous?: string
         </div>
       )}
       <div className="mt-8 flex flex-col-reverse gap-3 border-t border-ink/10 pt-5 sm:flex-row sm:justify-end">
-        {onDone && (
-          <Button type="button" variant="ghost" onClick={onDone}>
+        {onCancel && (
+          <Button type="button" variant="ghost" onClick={cancel}>
             Cancel
           </Button>
         )}
@@ -101,7 +123,17 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
   const latest = briefs[briefs.length - 1];
   const [selected, setSelected] = useState<number>(latest.version);
   const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<number | null>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const savedAlert = useRef<HTMLDivElement>(null);
+  const wasEditing = useRef(false);
   const brief = briefs.find((b) => b.version === selected) ?? latest;
+
+  // Focus follows the outcome: the confirmation after a save, the button after Cancel.
+  useEffect(() => {
+    if (wasEditing.current && !editing) (saved ? savedAlert.current : editButton.current)?.focus();
+    wasEditing.current = editing;
+  }, [editing, saved]);
 
   if (editing) {
     return (
@@ -114,7 +146,12 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
         <BriefForm
           name={name}
           previous={latest.content}
-          onDone={() => {
+          onCancel={() => {
+            setSaved(null);
+            setEditing(false);
+          }}
+          onDone={(version) => {
+            setSaved(version);
             setEditing(false);
             setSelected(Number.MAX_SAFE_INTEGER); // jump to the newest version once it loads
           }}
@@ -125,6 +162,13 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
 
   return (
     <Card>
+      {saved !== null && (
+        <div className="mb-5">
+          <Alert ref={savedAlert} tone="success" title={`Brief v${saved} saved`}>
+            Earlier versions stay in the history below.
+          </Alert>
+        </div>
+      )}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <h2 className="text-xl font-extrabold text-ink">Brief v{brief.version}</h2>
@@ -134,7 +178,12 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
             {brief.version !== latest.version && " · an older version"}
           </p>
         </div>
-        <Button variant="secondary" className="shrink-0 whitespace-nowrap" onClick={() => setEditing(true)}>
+        <Button
+          ref={editButton}
+          variant="secondary"
+          className="shrink-0 whitespace-nowrap"
+          onClick={() => setEditing(true)}
+        >
           Edit as new version
         </Button>
       </div>
@@ -147,12 +196,13 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
               aria-pressed={b.version === brief.version}
               onClick={() => setSelected(b.version)}
               className={cx(
-                "min-h-11 rounded-lg border px-3.5 text-sm font-semibold tabular-nums transition-colors",
+                "inline-flex min-h-11 items-center gap-1.5 rounded-lg border px-3.5 text-sm font-semibold tabular-nums transition-colors",
                 b.version === brief.version
                   ? "border-brand/40 bg-brand/5 text-brand"
                   : "border-line bg-surface text-muted hover:text-ink",
               )}
             >
+              {b.version === brief.version && <TickIcon />}
               v{b.version}
               {b.version === latest.version && " · latest"}
             </button>
@@ -160,7 +210,7 @@ function BriefViewer({ briefs, name }: { briefs: Brief[]; name: string }) {
         </div>
       )}
       <div className="mt-6 rounded-lg border border-line bg-surface-2 p-4 md:p-5">
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-ink">{brief.content}</p>
+        <p className="max-w-prose whitespace-pre-wrap text-sm leading-relaxed text-ink">{brief.content}</p>
       </div>
     </Card>
   );
@@ -173,6 +223,7 @@ export default function BriefPage() {
 
   return (
     <>
+      <PageTitle parts={[name, "Brief"]} />
       <PageHeader
         eyebrow="Step 1"
         title="Business brief"

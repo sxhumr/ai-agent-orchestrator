@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -25,16 +26,19 @@ import {
   Card,
   CardError,
   CardPending,
+  Eyebrow,
   Field,
   Input,
+  PageTitle,
   RelativeTime,
   Select,
   Textarea,
+  textLinkClass,
 } from "@/components/ui/primitives";
 import { ApiError, errorMessage } from "@/lib/api/client";
 import { useRequirement, useUpdateRequirement } from "@/lib/api/hooks";
 import type { Requirement, RequirementChanges, RequirementDetail } from "@/lib/api/types";
-import { scrollToFirstProblem } from "@/lib/forms";
+import { confirmDiscard, scrollToFirstProblem } from "@/lib/forms";
 import {
   CONFIDENCE_LABEL,
   IMPACT_LABEL,
@@ -84,13 +88,24 @@ function diff(r: Requirement, v: EditValues): RequirementChanges {
   return changes;
 }
 
-function EditForm({ name, requirement }: { name: string; requirement: Requirement }) {
+function EditForm({
+  name,
+  requirement,
+  onDirtyChange,
+  onSaved,
+}: {
+  name: string;
+  requirement: Requirement;
+  onDirtyChange: (dirty: boolean) => void;
+  onSaved: (message: string) => void;
+}) {
   const update = useUpdateRequirement(name, requirement.key);
   const {
     register,
     control,
     handleSubmit,
     setError,
+    reset,
     formState: { errors, isDirty },
   } = useForm<EditValues>({
     resolver: zodResolver(editSchema),
@@ -98,13 +113,29 @@ function EditForm({ name, requirement }: { name: string; requirement: Requiremen
     defaultValues: toValues(requirement),
   });
 
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    if (!isDirty) return;
+    // Warn before closing the tab or reloading with unsaved edits.
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [isDirty, onDirtyChange]);
+
   const onSubmit = handleSubmit((v) => {
     const changes = diff(requirement, v);
     if (Object.keys(changes).length === 0) {
       setError("root", { message: "Nothing has changed yet, so there’s no new version to save." });
       return;
     }
-    update.mutate({ ...changes, change_note: v.change_note || null });
+    // mutateAsync because the form remounts (key={version}) before mutate's own
+    // onSuccess would run, and per-call callbacks are skipped after an unmount.
+    update
+      .mutateAsync({ ...changes, change_note: v.change_note || null })
+      .then((saved) =>
+        onSaved(`Version ${saved.version} saved. Version ${saved.version - 1} stays in the history.`),
+      )
+      .catch(() => {}); // shown through update.isError
   }, scrollToFirstProblem);
 
   return (
@@ -152,35 +183,70 @@ function EditForm({ name, requirement }: { name: string; requirement: Requiremen
             ? `Saving creates version ${requirement.version + 1}. Version ${requirement.version} stays in the history.`
             : "Change a field to save a new version."}
         </p>
-        <Button type="submit" loading={update.isPending}>
-          Save version {requirement.version + 1}
-        </Button>
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={update.isPending}
+              onClick={() => confirmDiscard(true) && reset()}
+            >
+              Discard changes
+            </Button>
+          )}
+          <Button type="submit" loading={update.isPending}>
+            Save version {requirement.version + 1}
+          </Button>
+        </div>
       </div>
     </form>
   );
 }
 
-function QuickDecision({ name, requirement }: { name: string; requirement: Requirement }) {
+function QuickDecision({
+  name,
+  requirement,
+  editing,
+  onSaved,
+}: {
+  name: string;
+  requirement: Requirement;
+  editing: boolean;
+  onSaved: (message: string) => void;
+}) {
   const update = useUpdateRequirement(name, requirement.key);
   const pending = update.isPending ? update.variables?.status : undefined;
   if (requirement.status !== "proposed") return null;
+  // Deciding saves a new version, which would reset the edit form and lose its changes.
+  if (editing)
+    return (
+      <p className="text-sm text-muted">
+        You have unsaved edits below. Save or discard them before accepting or rejecting.
+      </p>
+    );
+  const decide = (status: "accepted" | "rejected") =>
+    update.mutate(
+      { status, change_note: status === "accepted" ? "Accepted" : "Rejected" },
+      {
+        onSuccess: (saved) =>
+          onSaved(
+            `${saved.key} ${status === "accepted" ? "accepted" : "rejected"} as version ${saved.version}. You can change the status again below.`,
+          ),
+      },
+    );
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
-        <Button
-          loading={pending === "accepted"}
-          disabled={update.isPending}
-          onClick={() => update.mutate({ status: "accepted", change_note: "Accepted" })}
-        >
+        <Button loading={pending === "accepted"} disabled={update.isPending} onClick={() => decide("accepted")}>
           Accept requirement
         </Button>
         <Button
           variant="secondary"
           loading={pending === "rejected"}
           disabled={update.isPending}
-          onClick={() => update.mutate({ status: "rejected", change_note: "Rejected" })}
+          onClick={() => decide("rejected")}
         >
-          Reject
+          Reject requirement
         </Button>
       </div>
       {update.isError && <Alert tone="error">{errorMessage(update.error)}</Alert>}
@@ -188,11 +254,10 @@ function QuickDecision({ name, requirement }: { name: string; requirement: Requi
   );
 }
 
-function SidePanels({ name, detail }: { name: string; detail: RequirementDetail }) {
-  const r = detail.requirement;
+function SourceCard({ name, r, className }: { name: string; r: Requirement; className?: string }) {
   const base = `/projects/${encodeURIComponent(name)}`;
   return (
-    <div className="space-y-6">
+    <div className={className}>
       <Card className="p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted">Source</h2>
         {r.source?.quote ? (
@@ -201,7 +266,7 @@ function SidePanels({ name, detail }: { name: string; detail: RequirementDetail 
               “{r.source.quote}”
             </blockquote>
             <figcaption className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-              <Link href={`${base}/brief`} className="font-semibold text-brand hover:underline">
+              <Link href={`${base}/brief`} className={textLinkClass}>
                 Brief v{r.source.brief_version}
               </Link>
               <SourceFlag r={r} />
@@ -215,6 +280,17 @@ function SidePanels({ name, detail }: { name: string; detail: RequirementDetail 
           </p>
         )}
       </Card>
+    </div>
+  );
+}
+
+function SidePanels({ name, detail }: { name: string; detail: RequirementDetail }) {
+  const r = detail.requirement;
+  const base = `/projects/${encodeURIComponent(name)}`;
+  return (
+    <div className="space-y-6">
+      {/* Below lg the source sits above the edit form instead, where it's needed first. */}
+      <SourceCard name={name} r={r} className="hidden lg:block" />
 
       <Card className="p-5">
         <h2 className="text-sm font-bold uppercase tracking-wide text-muted">Related questions</h2>
@@ -225,7 +301,7 @@ function SidePanels({ name, detail }: { name: string; detail: RequirementDetail 
             {detail.open_items.map((item) => (
               <li key={item.id} className="space-y-1.5 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs font-semibold tabular-nums text-muted">{item.key}</span>
+                  <span className="text-xs font-semibold text-muted">{item.key}</span>
                   <Badge tone={OPEN_ITEM_STATUS_TONE[item.status]}>{OPEN_ITEM_STATUS_LABEL[item.status]}</Badge>
                 </div>
                 <p className="text-sm text-ink">{item.description}</p>
@@ -238,8 +314,8 @@ function SidePanels({ name, detail }: { name: string; detail: RequirementDetail 
           </ul>
         )}
         {detail.open_items.some((i) => i.status === "open") && (
-          <Link href={`${base}/questions`} className="mt-3 inline-block text-sm font-semibold text-brand hover:underline">
-            Answer on the questions page
+          <Link href={`${base}/questions`} className={`${textLinkClass} mt-1 text-sm`}>
+            Answer questions
           </Link>
         )}
       </Card>
@@ -273,9 +349,19 @@ export default function RequirementPage() {
   const key = decodeURIComponent(useParams<{ key: string }>().key);
   const detail = useRequirement(name, key);
   const base = `/projects/${encodeURIComponent(name)}`;
+  const [editing, setEditing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (notice) noticeRef.current?.focus();
+  }, [notice]);
 
   const back = (
-    <Link href={`${base}/requirements`} className="inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-ink">
+    <Link
+      href={`${base}/requirements`}
+      className="-mx-2 inline-flex min-h-11 items-center gap-1 rounded-lg px-2 text-sm font-medium text-muted hover:text-ink"
+    >
       <ArrowLeftIcon /> All requirements
     </Link>
   );
@@ -296,14 +382,15 @@ export default function RequirementPage() {
   const r = detail.data.requirement;
   return (
     <>
+      <PageTitle parts={[`${r.key} ${r.title}`, name]} />
       <div className="space-y-4">
         {back}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted">
-            <span className="tabular-nums">{r.key}</span> · version {r.version}
-          </p>
+          <Eyebrow>
+            {r.key} · version {r.version}
+          </Eyebrow>
           <h1 className="mt-1 text-2xl font-extrabold text-ink">{r.title}</h1>
-          <p className="mt-1 text-sm text-muted">{r.description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{r.description}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <Badge tone={REQUIREMENT_STATUS_TONE[r.status]}>{REQUIREMENT_STATUS_LABEL[r.status]}</Badge>
             <Badge tone={NEUTRAL_TONE}>{PRIORITY_LABEL[r.priority]}</Badge>
@@ -311,15 +398,28 @@ export default function RequirementPage() {
             <Badge tone={NEUTRAL_TONE}>{CONFIDENCE_LABEL[r.confidence]}</Badge>
           </div>
         </div>
-        <QuickDecision name={name} requirement={r} />
+        {notice && (
+          <Alert ref={noticeRef} tone="success">
+            {notice}
+          </Alert>
+        )}
+        <QuickDecision name={name} requirement={r} editing={editing} onSaved={setNotice} />
       </div>
+
+      <SourceCard name={name} r={r} className="lg:hidden" />
 
       <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
         <Card className="min-w-0 flex-1 p-5 md:p-6">
           <h2 className="text-xl font-extrabold text-ink">Edit</h2>
           <p className="mt-1 text-sm text-muted">Every save is a new version; nothing is overwritten.</p>
           {/* Remount on a new version so the form starts from the saved values. */}
-          <EditForm key={r.version} name={name} requirement={r} />
+          <EditForm
+            key={r.version}
+            name={name}
+            requirement={r}
+            onDirtyChange={setEditing}
+            onSaved={setNotice}
+          />
         </Card>
         <div className="w-full shrink-0 lg:w-80">
           <SidePanels name={name} detail={detail.data} />
