@@ -39,6 +39,7 @@ jobs:
           cache: npm
           cache-dependency-path: gui/package-lock.json
       - run: npm ci
-      - run: npx tsc --noEmit
+      # Generates the route types (LayoutProps etc.) that tsc needs on a fresh checkout.
+      - run: npm run typecheck
       - run: npm run lint
       - run: npm run build
