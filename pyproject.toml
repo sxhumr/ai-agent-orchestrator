@@ -3,6 +3,8 @@ name = "forgeflow"
 version = "0.1.0"
 description = "Local-first orchestrator that drives Claude Code CLI from approved requirements to verified code."
 readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.143.0",

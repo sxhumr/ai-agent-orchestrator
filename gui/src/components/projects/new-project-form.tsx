@@ -2,13 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
 import { Alert, Button, Field, Input, Textarea } from "@/components/ui/primitives";
 import { errorMessage } from "@/lib/api/client";
 import { useCreateProject } from "@/lib/api/hooks";
-import { scrollToFirstProblem } from "@/lib/forms";
+import { confirmDiscard, scrollToFirstProblem } from "@/lib/forms";
 
 const schema = z.object({
   name: z
@@ -26,18 +27,27 @@ const schema = z.object({
 
 type Values = z.infer<typeof schema>;
 
-export function NewProjectForm({ onCancel }: { onCancel?: () => void }) {
+export function NewProjectForm({ onCancel, autoFocus }: { onCancel?: () => void; autoFocus?: boolean }) {
   const router = useRouter();
   const create = useCreateProject();
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    setFocus,
+    formState: { errors, isDirty },
   } = useForm<Values>({
     resolver: zodResolver(schema),
     mode: "onBlur",
     defaultValues: { name: "", root_path: "", description: "" },
   });
+
+  useEffect(() => {
+    if (autoFocus) setFocus("name");
+  }, [autoFocus, setFocus]);
+
+  const cancel = () => {
+    if (onCancel && confirmDiscard(isDirty, "this project")) onCancel();
+  };
 
   const onSubmit = handleSubmit(
     (values) =>
@@ -48,7 +58,7 @@ export function NewProjectForm({ onCancel }: { onCancel?: () => void }) {
   );
 
   return (
-    <form noValidate onSubmit={onSubmit}>
+    <form noValidate onSubmit={onSubmit} onKeyDown={(e) => e.key === "Escape" && onCancel && cancel()}>
       <fieldset disabled={create.isPending} className="space-y-5">
         <Field
           label="Project name"
@@ -90,7 +100,7 @@ export function NewProjectForm({ onCancel }: { onCancel?: () => void }) {
 
       <div className="mt-8 flex flex-col-reverse gap-3 border-t border-ink/10 pt-5 sm:flex-row sm:justify-end">
         {onCancel && (
-          <Button type="button" variant="ghost" onClick={onCancel}>
+          <Button type="button" variant="ghost" onClick={cancel}>
             Cancel
           </Button>
         )}

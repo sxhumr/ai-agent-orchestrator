@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
@@ -16,7 +16,7 @@ import {
   typeOptions,
 } from "@/components/projects/requirement-form-fields";
 import { SourceFlag } from "@/components/projects/source-flag";
-import { PlusIcon } from "@/components/ui/icons";
+import { PlusIcon, TickIcon } from "@/components/ui/icons";
 import {
   Alert,
   Badge,
@@ -28,13 +28,15 @@ import {
   Field,
   Input,
   PageHeader,
+  PageTitle,
+  primaryLinkClass,
   Select,
   Textarea,
 } from "@/components/ui/primitives";
 import { errorMessage } from "@/lib/api/client";
 import { useAddRequirement, useRequirements } from "@/lib/api/hooks";
 import type { RequirementStatus } from "@/lib/api/types";
-import { scrollToFirstProblem } from "@/lib/forms";
+import { confirmDiscard, scrollToFirstProblem } from "@/lib/forms";
 import {
   PRIORITY_LABEL,
   REQUIREMENT_STATUS_LABEL,
@@ -51,7 +53,8 @@ function AddRequirementForm({ name, onDone }: { name: string; onDone: (key: stri
     register,
     control,
     handleSubmit,
-    formState: { errors },
+    setFocus,
+    formState: { errors, isDirty },
   } = useForm<AddValues>({
     resolver: zodResolver(addSchema),
     mode: "onBlur",
@@ -64,9 +67,16 @@ function AddRequirementForm({ name, onDone }: { name: string; onDone: (key: stri
     },
   });
 
+  useEffect(() => setFocus("title"), [setFocus]);
+
+  const cancel = () => {
+    if (confirmDiscard(isDirty, "this requirement")) onDone("");
+  };
+
   return (
     <form
       noValidate
+      onKeyDown={(e) => e.key === "Escape" && cancel()}
       onSubmit={handleSubmit(
         (v) =>
           add.mutate(
@@ -99,7 +109,7 @@ function AddRequirementForm({ name, onDone }: { name: string; onDone: (key: stri
         </div>
       )}
       <div className="mt-8 flex flex-col-reverse gap-3 border-t border-ink/10 pt-5 sm:flex-row sm:justify-end">
-        <Button type="button" variant="ghost" onClick={() => onDone("")}>
+        <Button type="button" variant="ghost" onClick={cancel}>
           Cancel
         </Button>
         <Button type="submit" loading={add.isPending}>
@@ -118,6 +128,8 @@ export default function RequirementsPage() {
   const requirements = useRequirements(name);
   const [adding, setAdding] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
+  const addButton = useRef<HTMLButtonElement>(null);
+  const wasAdding = useRef(false);
   const base = `/projects/${encodeURIComponent(name)}`;
 
   const counts = useMemo(() => {
@@ -138,23 +150,38 @@ export default function RequirementsPage() {
         : r.status === filter,
   );
 
+  // Removed only appears once something has been removed.
+  const statuses: RequirementStatus[] = ["proposed", "accepted", "rejected", "removed"];
   const filters: { id: Filter; label: string }[] = [
     { id: "all", label: "All" },
-    { id: "proposed", label: "Proposed" },
-    { id: "accepted", label: "Accepted" },
-    { id: "rejected", label: "Rejected" },
+    ...statuses
+      .filter((s) => s !== "removed" || counts.removed > 0)
+      .map((s) => ({ id: s, label: REQUIREMENT_STATUS_LABEL[s] })),
     { id: "unverified", label: "Unverified source" },
   ];
 
+  useEffect(() => {
+    if (wasAdding.current && !adding) addButton.current?.focus();
+    wasAdding.current = adding;
+  }, [adding]);
+
+  // Rows act as links, but leave text selection and new-tab clicks alone.
+  const openRow = (e: React.MouseEvent, href: string) => {
+    if (window.getSelection()?.toString()) return;
+    if (e.metaKey || e.ctrlKey) window.open(href, "_blank");
+    else router.push(href);
+  };
+
   return (
     <>
+      <PageTitle parts={[name, "Requirements"]} />
       <PageHeader
         eyebrow="Step 2"
         title="Requirements"
         description="Proposed by the analyst, decided by you. Open one to edit it, accept it or see its history."
         actions={
           !adding && (
-            <Button variant="secondary" onClick={() => setAdding(true)}>
+            <Button ref={addButton} variant="secondary" onClick={() => setAdding(true)}>
               <PlusIcon /> Add requirement
             </Button>
           )
@@ -186,10 +213,7 @@ export default function RequirementsPage() {
           <p className="mt-1 max-w-xl text-sm text-muted">
             Generate them from the brief, or add them by hand if you already know what’s needed.
           </p>
-          <Link
-            href={`${base}/brief`}
-            className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-white shadow-sm shadow-brand/25 transition-all hover:bg-brand-deep active:scale-[0.98]"
-          >
+          <Link href={`${base}/brief`} className={`${primaryLinkClass} mt-6`}>
             Go to the brief
           </Link>
         </Card>
@@ -211,13 +235,14 @@ export default function RequirementsPage() {
                     : "border-line bg-surface text-muted hover:text-ink",
                 )}
               >
+                {filter === f.id && <TickIcon />}
                 {f.label}
                 <span className="tabular-nums text-xs font-medium">{counts[f.id]}</span>
               </button>
             ))}
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm shadow-ink/[0.03]">
+          <div className="relative overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm shadow-ink/[0.03]">
             <table className="w-full min-w-2xl text-left text-sm">
               <thead>
                 <tr className="border-b border-line text-xs uppercase tracking-wide text-muted">
@@ -234,7 +259,7 @@ export default function RequirementsPage() {
                   return (
                     <tr
                       key={r.id}
-                      onClick={() => router.push(href)}
+                      onClick={(e) => openRow(e, href)}
                       className="cursor-pointer border-b border-line/60 transition-colors last:border-0 hover:bg-brand/[0.03]"
                     >
                       <td className="px-4 py-3">
@@ -246,7 +271,7 @@ export default function RequirementsPage() {
                           {r.title}
                         </Link>
                         <p className="text-xs text-muted">
-                          <span className="tabular-nums">{r.key}</span> · {REQUIREMENT_TYPE_LABEL[r.requirement_type]}
+                          {r.key} · {REQUIREMENT_TYPE_LABEL[r.requirement_type]}
                           {r.version > 1 && <span className="tabular-nums"> · v{r.version}</span>}
                         </p>
                       </td>

@@ -9,7 +9,8 @@
   --brand-blue-deep: #4528c9; /* primary hover / gradient start */
   --brand-cyan: #2ee6b6; /* mint: accent, live indicators, gradient end */
   --brand-magenta: #ff4fa3; /* rose: secondary, sparing */
-  --brand-orange: #d97706; /* amber: attention / needs answers */
+  --brand-fill: #5b3df5; /* primary button fill: 6.1:1 under white text */
+  --brand-orange: #b45309; /* amber: attention / needs answers, 5:1 under white text */
   --brand-black: #1c1c1c;
   --brand-white: #ffffff;
 
@@ -23,16 +24,18 @@
 }
 
 [data-theme="dark"] {
-  /* Lighter violet so brand text clears 4.5:1 on dark surfaces; white
-     semibold button labels stay above the 3:1 bold-text floor. */
-  --brand-blue: #806bff;
+  /* Text and fill are split in dark mode: a light violet keeps brand text
+     and tinted chips above 5:1, and a deeper fill keeps white button
+     labels at 5:1. */
+  --brand-blue: #9585ff;
+  --brand-fill: #6a50ff;
   --brand-blue-deep: #5b3df5;
   --background: #0b0e14;
   --foreground: #eef1f7;
   --surface: #151a24;
   --surface-2: #1c222e;
   --line: rgba(255, 255, 255, 0.09);
-  --field-line: rgba(255, 255, 255, 0.32);
+  --field-line: rgba(255, 255, 255, 0.4); /* 3.8:1, clears the 3:1 non-text floor */
   --muted: #8b93a5;
 }
 
@@ -45,12 +48,14 @@
   [data-theme="dark"] {
     --muted: #c2c9d6;
     --line: rgba(255, 255, 255, 0.22);
+    --field-line: rgba(255, 255, 255, 0.5);
   }
 }
 
 @theme inline {
   --color-brand: var(--brand-blue);
   --color-brand-deep: var(--brand-blue-deep);
+  --color-brand-fill: var(--brand-fill);
   --color-brand-cyan: var(--brand-cyan);
   --color-brand-magenta: var(--brand-magenta);
   --color-brand-orange: var(--brand-orange);
@@ -71,7 +76,9 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-inter), system-ui, sans-serif;
-  font-feature-settings: "cv05", "tnum";
+  /* Tabular figures are opted into per element (tabular-nums): set globally, Inter
+     also gives hyphens tabular width, which spaces out "REQ-001" and "two-person". */
+  font-feature-settings: "cv05";
   transition: background-color 0.2s ease, color 0.2s ease;
 }
 
@@ -107,6 +114,8 @@ h1, h2, h3, .font-display {
   letter-spacing: -0.01em;
 }
 
+/* Fixed hex rather than vars: dark mode lightens --brand-blue for text,
+   and the gradient must keep the deeper light-mode violet in both themes. */
 .brand-gradient {
   background-image: linear-gradient(135deg, #4528c9 0%, #5b3df5 45%, #3d8bf5 80%, var(--brand-cyan) 130%);
 }
@@ -134,16 +143,29 @@ h1, h2, h3, .font-display {
   animation: page-enter 0.4s cubic-bezier(0.22, 1, 0.36, 1) 0.08s both;
 }
 
-:focus-visible {
-  outline: 2px solid var(--brand-blue);
-  outline-offset: 2px;
-  border-radius: 4px;
+/* Layered so utilities (focus:outline-none on fields) still win. Outlines
+   follow each element's own border-radius. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--brand-blue);
+    outline-offset: 2px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  /* Spinners are progress feedback, so they keep turning, slowly. */
+  .animate-spin {
+    animation-duration: 1.5s !important;
+    animation-iteration-count: infinite !important;
+  }
+  .progress-shimmer {
+    display: none;
   }
   /* Meaningful transitions survive as a fade; !important beats the blanket rule. */
   .page-enter,

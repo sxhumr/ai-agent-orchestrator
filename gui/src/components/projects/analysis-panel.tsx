@@ -5,12 +5,22 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 
-import { Alert, Button, Card, Field, Input, Select, Spinner } from "@/components/ui/primitives";
+import {
+  Alert,
+  Button,
+  Card,
+  Field,
+  Input,
+  primaryLinkClass,
+  secondaryLinkClass,
+  Select,
+  Spinner,
+} from "@/components/ui/primitives";
 import { errorMessage } from "@/lib/api/client";
 import { useRequirements, useRunAnalysis } from "@/lib/api/hooks";
 import type { ProjectSummary } from "@/lib/api/types";
 import { scrollToFirstProblem } from "@/lib/forms";
-import { plural } from "@/lib/labels";
+import { formatUsd, plural } from "@/lib/labels";
 
 const schema = z.object({
   max_budget_usd: z.coerce
@@ -27,7 +37,7 @@ function RunningCard({ version, polling }: { version: number | null; polling: bo
   return (
     <Card className="p-5 md:p-6">
       <div className="flex items-start gap-3">
-        <Spinner className="mt-0.5 h-5 w-5 shrink-0" />
+        <Spinner decorative className="mt-0.5 h-5 w-5" />
         <div>
           <h2 className="text-xl font-extrabold text-ink">Analysing brief v{version}…</h2>
           <p className="mt-1 max-w-xl text-sm text-muted">
@@ -39,7 +49,7 @@ function RunningCard({ version, polling }: { version: number | null; polling: bo
           {polling && (
             <p className="mt-3 flex items-center gap-2 text-xs font-medium text-muted">
               <span aria-hidden className="h-2 w-2 animate-pulse rounded-full bg-brand-cyan" />
-              Live — checking every 3s
+              Live. Checking every 3 seconds.
             </p>
           )}
         </div>
@@ -50,6 +60,34 @@ function RunningCard({ version, polling }: { version: number | null; polling: bo
 
 export function AnalysisPanel({ name, summary }: { name: string; summary: ProjectSummary }) {
   const run = useRunAnalysis(name);
+  const running = run.isPending || summary.analysis_running;
+  const announcement = running
+    ? `Analysing brief version ${summary.brief_version}.`
+    : run.isSuccess
+      ? "Analysis finished."
+      : run.isError
+        ? "The analysis failed."
+        : "";
+  return (
+    <>
+      {/* Stays mounted while the cards below swap, so screen readers hear each change. */}
+      <p aria-live="polite" className="sr-only">
+        {announcement}
+      </p>
+      <PanelBody name={name} summary={summary} run={run} />
+    </>
+  );
+}
+
+function PanelBody({
+  name,
+  summary,
+  run,
+}: {
+  name: string;
+  summary: ProjectSummary;
+  run: ReturnType<typeof useRunAnalysis>;
+}) {
   const requirements = useRequirements(name);
   const base = `/projects/${encodeURIComponent(name)}`;
   const {
@@ -73,24 +111,18 @@ export function AnalysisPanel({ name, summary }: { name: string; summary: Projec
       <Card className="space-y-4 p-5 md:p-6">
         <Alert tone="success" title="Analysis finished">
           {plural(r.requirement_keys.length, "requirement")} and {plural(r.open_item_keys.length, "open question")}{" "}
-          from brief v{r.brief_version}, for ${(r.run.cost_usd ?? 0).toFixed(2)}.
+          from brief v{r.brief_version}, for {formatUsd(r.run.cost_usd)}.
           {r.unverified_sources.length > 0 &&
-            ` ${plural(r.unverified_sources.length, "requirement")} couldn’t be matched to a quote in the brief: ${r.unverified_sources.join(", ")}.`}
+            ` ${plural(r.unverified_sources.length, "requirement")} with an unverified source (the quote wasn’t found in the brief): ${r.unverified_sources.join(", ")}.`}
         </Alert>
         <p className="text-sm text-muted">{r.summary}</p>
         <div className="flex flex-col gap-3 sm:flex-row">
           {r.open_item_keys.length > 0 && (
-            <Link
-              href={`${base}/questions`}
-              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-white shadow-sm shadow-brand/25 transition-all hover:bg-brand-deep active:scale-[0.98]"
-            >
-              Answer the questions
+            <Link href={`${base}/questions`} className={primaryLinkClass}>
+              Answer questions
             </Link>
           )}
-          <Link
-            href={`${base}/requirements`}
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-line bg-surface px-5 text-sm font-semibold text-ink transition-all hover:border-brand/40 hover:text-brand active:scale-[0.98]"
-          >
+          <Link href={`${base}/requirements`} className={secondaryLinkClass}>
             Review requirements
           </Link>
         </div>
@@ -109,9 +141,9 @@ export function AnalysisPanel({ name, summary }: { name: string; summary: Projec
         <h2 className="text-xl font-extrabold text-ink">Analysis</h2>
         {stale ? (
           <Alert tone="warning" title={`Brief v${summary.brief_version} hasn’t been analysed`}>
-            Your requirements came from brief v{analysedVersion}. Re-analysing a changed brief
-            without losing your edits arrives with change-impact support. Until then, update the
-            affected requirements by hand.
+            Your requirements came from brief v{analysedVersion}. ForgeFlow can’t yet re-analyse a
+            changed brief without losing your edits, so update the affected requirements by hand for
+            now.
           </Alert>
         ) : (
           <Alert tone="info">

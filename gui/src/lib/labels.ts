@@ -22,7 +22,7 @@ const ERROR =
 
 export const PROJECT_STATUS_LABEL: Record<ProjectStatus, string> = {
   INITIALISING: "Getting started",
-  DISCOVERY: "Discovery",
+  DISCOVERY: "Analysing",
   AWAITING_CLARIFICATION: "Needs answers",
   REQUIREMENTS_REVIEW: "Ready for review",
 };
@@ -56,10 +56,10 @@ export const REQUIREMENT_TYPE_LABEL: Record<RequirementType, string> = {
 };
 
 export const PRIORITY_LABEL: Record<Priority, string> = {
-  must: "Must",
-  should: "Should",
-  could: "Could",
-  wont: "Won’t",
+  must: "Must have",
+  should: "Should have",
+  could: "Could have",
+  wont: "Won’t have",
 };
 
 export const CONFIDENCE_LABEL: Record<Confidence, string> = {
@@ -93,8 +93,9 @@ export const OPEN_ITEM_STATUS_LABEL: Record<OpenItemStatus, string> = {
   dismissed: "Dismissed",
 };
 
+// Open uses the brand tone so amber only ever means high impact.
 export const OPEN_ITEM_STATUS_TONE: Record<OpenItemStatus, string> = {
-  open: WARNING,
+  open: BRAND,
   resolved: SUCCESS,
   dismissed: NEUTRAL,
 };
@@ -114,8 +115,18 @@ export const RUN_STATUS_LABEL: Record<string, string> = {
   timed_out: "Timed out",
   cancelled: "Cancelled",
   launch_error: "Couldn’t start",
-  protocol_error: "Bad output",
+  protocol_error: "Unreadable output",
 };
+
+export const AGENT_ROLE_LABEL: Record<string, string> = {
+  requirements_analyst: "Requirements analyst",
+};
+
+/** Falls back to sentence-cased snake_case for statuses and roles added later. */
+export function labelFor(record: Record<string, string>, key: string): string {
+  const raw = key.replace(/_/g, " ");
+  return record[key] ?? raw.charAt(0).toUpperCase() + raw.slice(1);
+}
 
 export const NEUTRAL_TONE = NEUTRAL;
 export const WARNING_TONE = WARNING;
@@ -123,6 +134,11 @@ export const SUCCESS_TONE = SUCCESS;
 
 export function formatUsd(value: number | null | undefined): string {
   return `$${(value ?? 0).toFixed(2)}`;
+}
+
+/** Like formatUsd, but says so when no cost was recorded instead of showing $0.00. */
+export function formatCost(value: number | null | undefined): string {
+  return value === null || value === undefined ? "Not recorded" : formatUsd(value);
 }
 
 export function plural(n: number, one: string, many = `${one}s`): string {

@@ -1,10 +1,30 @@
 "use client";
 
-import { forwardRef } from "react";
+import { cloneElement, forwardRef, isValidElement, useId } from "react";
 
 export function cx(...parts: (string | false | null | undefined)[]) {
   return parts.filter(Boolean).join(" ");
 }
+
+const PRIMARY = "bg-brand-fill text-white shadow-sm shadow-brand/25 hover:bg-brand-deep";
+const PRESS = "transition-all active:scale-[0.98] motion-reduce:active:scale-100";
+
+/** Classes for a link that looks like the primary Button. */
+export const primaryLinkClass = cx(
+  "inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold",
+  PRIMARY,
+  PRESS,
+);
+
+/** Classes for a link that looks like the secondary Button. */
+export const secondaryLinkClass = cx(
+  "inline-flex min-h-11 items-center justify-center rounded-xl border border-line bg-surface px-5 text-sm font-semibold text-ink hover:border-brand/40 hover:text-brand",
+  PRESS,
+);
+
+/** Small inline text link with a 44px hit area that doesn't shift the text. */
+export const textLinkClass =
+  "-mx-2 inline-flex min-h-11 items-center rounded-lg px-2 font-medium text-brand hover:underline";
 
 export const Button = forwardRef<
   HTMLButtonElement,
@@ -17,10 +37,12 @@ export const Button = forwardRef<
     <button
       ref={ref}
       disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cx(
-        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-all",
-        "disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]",
-        variant === "primary" && "bg-brand text-white shadow-sm shadow-brand/25 hover:bg-brand-deep",
+        "inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold",
+        PRESS,
+        "disabled:cursor-not-allowed disabled:opacity-50",
+        variant === "primary" && PRIMARY,
         variant === "secondary" && "border border-line bg-surface text-ink hover:border-brand/40 hover:text-brand",
         variant === "ghost" && "text-muted hover:text-ink",
         className,
@@ -29,6 +51,7 @@ export const Button = forwardRef<
     >
       {loading && (
         <Spinner
+          decorative
           className={cx(
             "h-4 w-4",
             variant === "primary" ? "border-white/40 border-t-white" : "border-brand/25 border-t-brand",
@@ -40,15 +63,15 @@ export const Button = forwardRef<
   );
 });
 
-export function Spinner({ className }: { className?: string }) {
+/** `decorative` spinners sit next to text that already says what's happening. */
+export function Spinner({ className, decorative }: { className?: string; decorative?: boolean }) {
   return (
     <span
       className={cx(
-        "inline-block animate-spin rounded-full border-2 border-brand/25 border-t-brand",
+        "inline-block shrink-0 animate-spin rounded-full border-2 border-brand/25 border-t-brand",
         className ?? "h-5 w-5",
       )}
-      role="status"
-      aria-label="Loading"
+      {...(decorative ? { "aria-hidden": true } : { role: "status", "aria-label": "Loading" })}
     />
   );
 }
@@ -98,39 +121,59 @@ export function Field({
   required?: boolean;
   children: React.ReactNode;
 }) {
+  const id = useId();
+  const noteId = `${id}-note`;
+  const note = error ?? hint;
+  // The control gets the id, the hint or error as its description, and the
+  // required state, so the label stays just the label for screen readers.
+  const control = isValidElement<Record<string, unknown>>(children)
+    ? cloneElement(children, {
+        id: (children.props.id as string | undefined) ?? id,
+        "aria-describedby": note ? noteId : undefined,
+        "aria-required": required || undefined,
+      })
+    : children;
+  const controlId =
+    isValidElement<Record<string, unknown>>(children) && typeof children.props.id === "string"
+      ? children.props.id
+      : id;
   return (
-    <label className="block">
-      <span className="mb-1.5 flex items-baseline gap-1 text-sm font-medium text-ink">
+    <div>
+      <label htmlFor={controlId} className="mb-1.5 flex items-baseline gap-1 text-sm font-medium text-ink">
         {label}
         {required && (
           <span aria-hidden className="text-brand">
             *
           </span>
         )}
-      </span>
-      {children}
-      {hint && !error && <span className="mt-1.5 block text-[13px] leading-snug text-muted">{hint}</span>}
+      </label>
+      {control}
+      {hint && !error && (
+        <p id={noteId} className="mt-1.5 text-[13px] leading-snug text-muted">
+          {hint}
+        </p>
+      )}
       {error && (
-        <span
+        <p
+          id={noteId}
           role="alert"
-          className="mt-1.5 block text-[13px] font-medium leading-snug text-red-600 dark:text-red-400"
+          className="mt-1.5 text-[13px] font-medium leading-snug text-red-600 dark:text-red-400"
         >
           {error}
-        </span>
+        </p>
       )}
-    </label>
+    </div>
   );
 }
 
-export function Alert({
-  tone = "error",
-  title,
-  children,
-}: {
-  tone?: "error" | "info" | "success" | "warning";
-  title?: string;
-  children: React.ReactNode;
-}) {
+export const Alert = forwardRef<
+  HTMLDivElement,
+  {
+    tone?: "error" | "info" | "success" | "warning";
+    title?: string;
+    children: React.ReactNode;
+  }
+>(function Alert({ tone = "error", title, children }, ref) {
   const tones = {
     error: "border-red-200 bg-red-50 text-red-800 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-300",
     info: "border-brand/15 bg-brand/[0.04] text-ink dark:bg-brand/10",
@@ -141,6 +184,8 @@ export function Alert({
   };
   return (
     <div
+      ref={ref}
+      tabIndex={ref ? -1 : undefined}
       role={tone === "error" ? "alert" : "status"}
       className={cx("rounded-xl border px-4 py-3 text-sm leading-relaxed", tones[tone])}
     >
@@ -148,7 +193,7 @@ export function Alert({
       {children}
     </div>
   );
-}
+});
 
 export function Checkbox({
   label,
@@ -223,8 +268,11 @@ export function StatTile({ label, value, hint }: { label: string; value: React.R
 /** Pending state inside a card slot. */
 export function CardPending({ message }: { message: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface py-20 shadow-sm shadow-ink/[0.03]">
-      <Spinner />
+    <div
+      role="status"
+      className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface py-20 shadow-sm shadow-ink/[0.03]"
+    >
+      <Spinner decorative />
       <p className="text-sm text-muted">{message}</p>
     </div>
   );
@@ -233,8 +281,8 @@ export function CardPending({ message }: { message: string }) {
 /** Pending state inline or in a sidebar. */
 export function InlinePending({ message, className }: { message: string; className?: string }) {
   return (
-    <div className={cx("flex items-center justify-center gap-2 text-sm text-muted", className ?? "py-8")}>
-      <Spinner className="h-4 w-4" /> {message}
+    <div role="status" className={cx("flex items-center justify-center gap-2 text-sm text-muted", className ?? "py-8")}>
+      <Spinner decorative className="h-4 w-4" /> {message}
     </div>
   );
 }
@@ -265,13 +313,22 @@ export function PageHeader({
   return (
     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0">
-        {eyebrow && <p className="text-xs font-semibold uppercase tracking-wider text-muted">{eyebrow}</p>}
+        {eyebrow && <Eyebrow>{eyebrow}</Eyebrow>}
         <h1 className={cx("text-2xl font-extrabold text-ink", eyebrow ? "mt-1" : undefined)}>{title}</h1>
-        <p className="mt-1 text-sm text-muted">{description}</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p>
       </div>
       {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
     </div>
   );
+}
+
+export function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <p className="font-display text-xs font-bold uppercase tracking-wider text-muted">{children}</p>;
+}
+
+/** Sets the tab title, which is also what screen readers announce on navigation. */
+export function PageTitle({ parts }: { parts: (string | undefined)[] }) {
+  return <title>{[...parts.filter(Boolean), "ForgeFlow"].join(" · ")}</title>;
 }
 
 export function RelativeTime({ iso }: { iso: string }) {

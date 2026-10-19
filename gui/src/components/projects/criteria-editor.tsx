@@ -1,6 +1,7 @@
 "use client";
 
 import type { Control, FieldValues, UseFormRegister } from "react-hook-form";
+import { useId } from "react";
 import { useFieldArray } from "react-hook-form";
 
 import { PlusIcon } from "@/components/ui/icons";
@@ -22,11 +23,12 @@ export function CriteriaEditor<T extends WithCriteria>({
     name: "acceptance_criteria",
   });
   const reg = register as unknown as UseFormRegister<WithCriteria>;
+  const hintId = useId();
 
   return (
     <fieldset>
       <legend className="mb-1.5 text-sm font-medium text-ink">Acceptance criteria</legend>
-      <p className="mb-3 text-[13px] leading-snug text-muted">
+      <p id={hintId} className="mb-3 text-[13px] leading-snug text-muted">
         Each one should pass or fail when tested, e.g. “Orders after 11:00 are rejected with a message”.
       </p>
       {fields.length === 0 && (
@@ -37,10 +39,11 @@ export function CriteriaEditor<T extends WithCriteria>({
       <ol className="space-y-2">
         {fields.map((field, i) => (
           <li key={field.id} className="flex items-center gap-2">
-            <span className="w-11 shrink-0 text-xs font-semibold tabular-nums text-muted">AC-{i + 1}</span>
+            <span className="w-11 shrink-0 text-xs font-semibold text-muted">AC-{i + 1}</span>
             <Input
               {...reg(`acceptance_criteria.${i}.text` as const)}
               aria-label={`Acceptance criterion ${i + 1}`}
+              aria-describedby={hintId}
             />
             <button
               type="button"

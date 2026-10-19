@@ -23,8 +23,12 @@ function ApiStatus() {
   const label = health.isPending ? "Connecting…" : online ? "API connected" : "API offline";
   return (
     <span
-      className="hidden items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted sm:flex"
-      title={online ? undefined : "Start it with: uv run forgeflow serve"}
+      role="status"
+      className={cx(
+        "items-center gap-2 rounded-full border border-line px-3 py-1.5 text-xs font-medium text-muted",
+        // Offline matters on every screen size; "connected" is only reassurance.
+        health.isError ? "flex" : "hidden sm:flex",
+      )}
     >
       <span
         aria-hidden
@@ -36,6 +40,11 @@ function ApiStatus() {
         )}
       />
       {label}
+      {health.isError && (
+        <span className="hidden md:inline">
+          . Start it with <code className="font-semibold text-ink">uv run forgeflow serve</code>
+        </span>
+      )}
     </span>
   );
 }
