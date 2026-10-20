@@ -151,7 +151,7 @@ The reasons behind each decision are in [`docs/decisions/`](docs/decisions/) (AD
 | Python types | `uv run mypy src` |
 | Unit tests | `uv run pytest tests/unit` |
 | Live tests (paid, about $0.30) | `FORGEFLOW_LIVE=1 uv run pytest tests/integration` |
-| GUI types, lint, build | `cd gui && npx tsc --noEmit && npm run lint && npm run build` |
+| GUI types, lint, build | `cd gui && npm run typecheck && npm run lint && npm run build` |
 | Screenshots and demo GIF | `scripts/capture-media.sh` (needs `npx playwright install chromium` in `gui/`) |
 
 ## Documentation
