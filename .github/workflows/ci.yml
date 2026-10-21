@@ -23,6 +23,8 @@ jobs:
           enable-cache: true
           cache-dependency-glob: backend/uv.lock
       - run: uv sync --locked
+      # requirements.txt is generated from uv.lock for pip users; fail if it has drifted.
+      - run: uv export --format requirements-txt --no-hashes --no-dev --no-emit-project | diff - requirements.txt
       # ../scripts holds the demo seeder and GIF helper, linted with the backend's config.
       - run: uv run ruff check . ../scripts
       - run: uv run ruff format --check . ../scripts

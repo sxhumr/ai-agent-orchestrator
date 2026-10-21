@@ -54,6 +54,8 @@ You need Python 3.12 or later, [uv](https://docs.astral.sh/uv/), Node.js 24, and
 (cd frontend && npm ci)
 ```
 
+Without uv, `pip install -r backend/requirements.txt && pip install -e backend --no-deps` works too.
+
 The repository has two halves: `backend/` is the Python package (CLI, API, adapter, store) and `frontend/` is the Next.js GUI.
 
 ## Using it
