@@ -16,9 +16,9 @@ A local-first orchestrator that takes a project from a business brief to approve
   - The analyst runs with no tools in an empty folder, so it can't read or change your files.
   - Its output must match a schema and is validated again before anything is saved.
   - The API only listens on this machine, rejects DNS-rebinding requests, and runs one analysis per project at a time.
-- **Bounded runs.** Every Claude Code run has a budget, a time limit and clean cancellation, and is recorded with its cost, including failed ones.
+- **Bounded runs.** Every Claude Code run has a time limit and clean cancellation. Analyst runs have a $1 budget by default and are recorded with their cost, including failed ones; `forgeflow run` takes `--max-budget-usd`.
 - **Local and private.** Everything lives in one SQLite file on your machine. There is no account and no hosted service.
-- **GUI and CLI.** Everything the GUI does is also a `forgeflow` command.
+- **GUI and CLI.** Every change you can make in the GUI is also a `forgeflow` command.
 
 ![Accepting a requirement, answering a question and filtering the list](docs/media/demo.gif)
 
@@ -50,9 +50,11 @@ The screenshots use demo data from [`scripts/seed_demo.py`](scripts/seed_demo.py
 You need Python 3.12 or later, [uv](https://docs.astral.sh/uv/), Node.js 24, and Claude Code CLI on `PATH` and already signed in. Development used Claude Code 2.1.299.
 
 ```bash
-uv sync
-(cd gui && npm ci)
+(cd backend && uv sync)
+(cd frontend && npm ci)
 ```
+
+The repository has two halves: `backend/` is the Python package (CLI, API, adapter, store) and `frontend/` is the Next.js GUI.
 
 ## Using it
 
@@ -61,17 +63,19 @@ uv sync
 Start the API and the GUI, then open http://localhost:3000:
 
 ```bash
-uv run forgeflow serve        # API on http://127.0.0.1:8765
-(cd gui && npm run dev)       # GUI on http://localhost:3000
+(cd backend && uv run forgeflow serve)   # API on http://127.0.0.1:8765
+(cd frontend && npm run dev)            # GUI on http://localhost:3000
 ```
 
 Create a project, paste the brief, and generate requirements. Analysis takes about a minute and a typical brief costs $0.10 to $0.30. Then answer the questions and accept, reword or reject each requirement.
 
-To look around without a paid run, seed the demo project first: `uv run python scripts/seed_demo.py`.
+To look around without a paid run, seed the demo project first: `uv run --project backend python scripts/seed_demo.py`.
 
 If port 3000 is taken, run the GUI with `npm run dev -- -p 3100` and allow that origin with `uv run forgeflow serve --gui-origin http://localhost:3100`. The GUI finds the API through `NEXT_PUBLIC_API_URL`, which defaults to `http://127.0.0.1:8765`.
 
 ### CLI
+
+Run these from `backend/`, or install the command with `uv tool install ./backend` and drop the `uv run` prefix.
 
 ```bash
 uv run forgeflow project create shop --root ~/code/shop --description "Repair bookings"
@@ -85,7 +89,7 @@ uv run forgeflow req export shop --out docs/requirements   # requirements.md + r
 | Command | What it does |
 | --- | --- |
 | `project create / list / show` | Create a project for a folder, list projects, show one with its counts and runs |
-| `brief add / show` | Add a new brief version from a file or stdin, show any version |
+| `brief add / show` | Add a new brief version from a file (`--file`) or inline (`--text`), show any version |
 | `requirements generate` | Analyse the latest brief (refuses once a project has requirements) |
 | `req list / show / history` | List requirements (`?src` marks an unverified source), show one with its quote and questions, list every version |
 | `req add / edit` | Add your own requirement, or save a new version with a change note |
@@ -99,7 +103,7 @@ Data lives in one SQLite file at `$FORGEFLOW_HOME/forgeflow.db`, which defaults 
 ## How it works
 
 ```
-┌─ gui/ (Next.js) ─────────┐   HTTP, loopback only   ┌─ forgeflow (Python) ───────────────────┐
+┌─ frontend/ (Next.js) ────┐   HTTP, loopback only   ┌─ backend/ (Python) ────────────────────┐
 │ projects, brief,         │ ──────────────────────► │ api/      FastAPI, thin layer          │
 │ requirements, questions  │                         │ cli.py    the same operations          │
 │ TanStack Query           │ ◄────────────────────── │    │                                   │
@@ -145,14 +149,16 @@ The reasons behind each decision are in [`docs/decisions/`](docs/decisions/) (AD
 
 ## Development
 
+Python checks run in `backend/`, GUI checks in `frontend/`.
+
 | Check | Command |
 | --- | --- |
 | Python lint and formatting | `uv run ruff check . && uv run ruff format --check .` |
 | Python types | `uv run mypy src` |
 | Unit tests | `uv run pytest tests/unit` |
 | Live tests (paid, about $0.30) | `FORGEFLOW_LIVE=1 uv run pytest tests/integration` |
-| GUI types, lint, build | `cd gui && npm run typecheck && npm run lint && npm run build` |
-| Screenshots and demo GIF | `scripts/capture-media.sh` (needs `npx playwright install chromium` in `gui/`) |
+| GUI types, lint, build | `npm run typecheck && npm run lint && npm run build` |
+| Screenshots and demo GIF | `scripts/capture-media.sh` (needs `npx playwright install chromium` in `frontend/`) |
 
 ## Documentation
 

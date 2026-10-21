@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Regenerate the README screenshots and demo GIF in docs/media/ from seeded demo data.
-# Needs uv, npm (with `npm ci` done in gui/) and Playwright's Chromium
-# (`cd gui && npx playwright install chromium`). Makes no Claude Code calls.
+# Needs uv, npm (with `npm ci` done in frontend/) and Playwright's Chromium
+# (`cd frontend && npx playwright install chromium`). Makes no Claude Code calls.
 set -euo pipefail
 
 repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,15 +35,15 @@ for port in "$api_port" "$gui_port"; do
 done
 
 cd "$repo"
-uv run python scripts/seed_demo.py --db "$work/forgeflow.db" --root "$work"
+uv run --project backend python scripts/seed_demo.py --db "$work/forgeflow.db" --root "$work"
 
-setsid uv run forgeflow --db "$work/forgeflow.db" serve --port "$api_port" \
+setsid uv run --project backend forgeflow --db "$work/forgeflow.db" serve --port "$api_port" \
   --gui-origin "http://localhost:$gui_port" >"$work/api.log" 2>&1 &
 pids+=($!)
 
 # A production build, so no development overlay appears in the screenshots.
-(cd gui && NEXT_PUBLIC_API_URL="http://127.0.0.1:$api_port" npx next build >"$work/build.log" 2>&1)
-(cd gui && exec setsid npx next start -p "$gui_port" >"$work/gui.log" 2>&1) &
+(cd frontend && NEXT_PUBLIC_API_URL="http://127.0.0.1:$api_port" npx next build >"$work/build.log" 2>&1)
+(cd frontend && exec setsid npx next start -p "$gui_port" >"$work/gui.log" 2>&1) &
 pids+=($!)
 
 wait_for "http://127.0.0.1:$api_port/api/health"

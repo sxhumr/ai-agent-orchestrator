@@ -12,15 +12,20 @@ jobs:
   python:
     name: Python (lint, format, types, unit tests)
     runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.12"
           enable-cache: true
+          cache-dependency-glob: backend/uv.lock
       - run: uv sync --locked
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
+      # ../scripts holds the demo seeder and GIF helper, linted with the backend's config.
+      - run: uv run ruff check . ../scripts
+      - run: uv run ruff format --check . ../scripts
       - run: uv run mypy src
       # The live tests call the real Claude Code CLI and are skipped without FORGEFLOW_LIVE=1.
       - run: uv run pytest -q
@@ -30,14 +35,14 @@ jobs:
     runs-on: ubuntu-24.04
     defaults:
       run:
-        working-directory: gui
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: gui/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       # Generates the route types (LayoutProps etc.) that tsc needs on a fresh checkout.
       - run: npm run typecheck

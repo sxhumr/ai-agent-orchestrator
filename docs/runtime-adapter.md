@@ -33,7 +33,7 @@ if result.status is RunStatus.SUCCEEDED and not result.permission_denials:
 
 ## Adapter interface
 
-`RuntimeAdapter.run(task, *, cancel, on_event) -> RunResult` lives in `src/forgeflow/runtime/claude_code.py`. Everything specific to the CLI stays inside `ClaudeCodeAdapter`.
+`RuntimeAdapter.run(task, *, cancel, on_event) -> RunResult` lives in `backend/src/forgeflow/runtime/claude_code.py`. Everything specific to the CLI stays inside `ClaudeCodeAdapter`.
 
 | `RunStatus` | Meaning |
 |---|---|

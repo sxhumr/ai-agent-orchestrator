@@ -7,8 +7,8 @@ import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-// Playwright is a devDependency of the GUI, not of the repository root.
-const require = createRequire(new URL("../gui/package.json", import.meta.url));
+// Playwright is a devDependency of the frontend, not of the repository root.
+const require = createRequire(new URL("../frontend/package.json", import.meta.url));
 const { chromium } = require("playwright");
 
 const [base, mediaDir, framesDir] = process.argv.slice(2);
