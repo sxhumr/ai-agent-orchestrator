@@ -5,7 +5,7 @@ This document covers the current state as of Milestone 2 plus the GUI. `forgeflo
 ## Modules
 
 ```
-forgeflow/
+backend/src/forgeflow/
 ├── config.py               AdapterConfig: limits and permission policy
 ├── models/
 │   ├── execution.py        TaskSpec, RunEvent, RunStatus, RunResult (runtime I/O)
@@ -19,7 +19,7 @@ forgeflow/
 │   └── export.py           Markdown/JSON export
 └── cli.py                  `forgeflow run | serve | project | brief | requirements | questions`
 
-gui/                        Next.js 16 (App Router, Cache Components) + Tailwind v4
+frontend/                   Next.js 16 (App Router, Cache Components) + Tailwind v4
 ├── src/app/                routes: /, /projects/[name]/{,brief,requirements,requirements/[key],questions}
 ├── src/components/ui/      design-system primitives (no component libraries)
 ├── src/components/projects/ feature components (shell, analysis panel, criteria editor…)

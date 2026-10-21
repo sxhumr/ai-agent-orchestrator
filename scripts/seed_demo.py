@@ -4,7 +4,7 @@ The analysis goes through the real ``analyse_brief`` path (schema validation, ke
 assignment, source-quote checks, agent-run record); only the Claude Code adapter is
 replaced by one that returns canned output.
 
-    uv run python scripts/seed_demo.py --db /tmp/forgeflow-demo/forgeflow.db
+    uv run --project backend python scripts/seed_demo.py --db /tmp/forgeflow-demo/forgeflow.db
 """
 
 from __future__ import annotations
